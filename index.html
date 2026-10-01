@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Editor de Texto en Imágenes JPEG</title>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: #1a1a1a; color: #eee; padding: 20px; }
+  h1 { margin-bottom: 15px; color: #4fc3f7; }
+  .container { display: grid; grid-template-columns: 1fr 320px; gap: 20px; }
+  .canvas-wrap { background: #2a2a2a; padding: 15px; border-radius: 8px; position: relative; }
+  .canvas-container { position: relative; display: inline-block; }
+  #canvas { max-width: 100%; display: block; background: #fff; border: 2px solid #444; cursor: crosshair; }
+  #overlay { position: absolute; top: 0; left: 0; pointer-events: none; z-index: 10; }
+  .panel { background: #2a2a2a; padding: 15px; border-radius: 8px; }
+  .panel h3 { margin-bottom: 10px; color: #4fc3f7; font-size: 14px; }
+  button, input, select { width: 100%; padding: 8px; margin: 4px 0; border-radius: 4px; border: 1px solid #444; background: #333; color: #eee; }
+  button { background: #4fc3f7; color: #000; font-weight: bold; cursor: pointer; border: none; }
+  button:hover { background: #29b6f6; }
+  button.secondary { background: #555; color: #eee; }
+  button.edit-btn { background: #ffb74d; color: #000; }
+  button.edit-btn:hover { background: #ffa726; }
+  .row { display: flex; gap: 5px; }
+  .row > * { flex: 1; }
+  label { font-size: 12px; color: #aaa; display: block; margin-top: 8px; }
+  .status { padding: 8px; background: #333; border-radius: 4px; font-size: 12px; margin-top: 10px; min-height: 40px; }
+  .detected { background: #333; padding: 8px; margin: 3px 0; border-radius: 4px; font-size: 12px; cursor: pointer; border-left: 3px solid #4fc3f7; display: flex; justify-content: space-between; align-items: center; }
+  .detected:hover { background: #444; }
+  .detected-text { flex: 1; }
+  .detected-edit { margin-left: 8px; padding: 4px 8px; font-size: 11px; width: auto; }
+  .font-preview { background: #fff; color: #000; padding: 10px; margin-top: 5px; border-radius: 4px; text-align: center; min-height: 40px; display: flex; align-items: center; justify-content: center; }
+  .bbox-info { background: #222; padding: 6px; margin-top: 5px; border-radius: 4px; font-size: 11px; color: #888; font-family: monospace; }
+  .scale-control { background: #333; padding: 8px; margin-top: 5px; border-radius: 4px; }
+  .scale-control label { color: #4fc3f7; font-size: 11px; }
+</style>
+</head>
+<body>
+
+<h1>️ Editor de Texto en Imágenes JPEG</h1>
+
+<div class="container">
+  <div class="canvas-wrap">
+    <div class="canvas-container" id="canvasContainer">
+      <canvas id="canvas"></canvas>
+      <canvas id="overlay"></canvas>
+    </div>
+    <div class="status" id="status">Carga una imagen para comenzar</div>
+  </div>
+
+  <div class="panel">
+    <h3>1. Cargar imagen</h3>
+    <input type="file" id="fileInput" accept="image/jpeg,image/jpg">
+
+    <h3 style="margin-top:15px">2. Detectar texto (OCR)</h3>
+    <button id="btnOCR">🔍 Detectar texto</button>
+    <div id="ocrResults" style="max-height:300px;overflow-y:auto;margin-top:8px"></div>
+
+    <h3 style="margin-top:15px">3. Formato del texto</h3>
+    <label>Fuente</label>
+    <select id="fontFamily">
+      <option value="Arial">Arial</option>
+      <option value="Times New Roman">Times New Roman</option>
+      <option value="Courier New">Courier New</option>
+      <option value="Georgia">Georgia</option>
+      <option value="Verdana">Verdana</option>
+      <option value="Impact">Impact</option>
+    </select>
+    <label>Tamaño (px): <span id="fontSizeLabel">24</span></label>
+    <input type="range" id="fontSize" value="24" min="8" max="200">
+    
+    <div class="scale-control">
+      <label>⚙️ Factor de escala: <span id="scaleLabel">1.25</span></label>
+      <input type="range" id="scaleFactor" value="1.25" min="1.0" max="2.0" step="0.05">
+      <label style="font-size:10px;color:#666">Ajusta si el texto queda grande/pequeño</label>
+    </div>
+    
+    <label>Color del texto</label>
+    <input type="color" id="textColor" value="#000000">
+    <label>Estilo</label>
+    <div class="row">
+      <button id="btnBold" class="secondary">Negrita</button>
+      <button id="btnItalic" class="secondary">Cursiva</button>
+    </div>
+    <div class="font-preview" id="fontPreview">Vista previa</div>
+    <div class="bbox-info" id="bboxInfo">Sin selección</div>
+
+    <h3 style="margin-top:15px">4. Exportar</h3>
+    <button id="btnSave">💾 Guardar JPEG</button>
+    <button id="btnReset" class="secondary">🔄 Reiniciar</button>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const overlay = document.getElementById('overlay');
+const overlayCtx = overlay.getContext('2d');
+const status = document.getElementById('status');
+const bboxInfo = document.getElementById('bboxInfo');
+
+let originalImageData = null;
+let selection = null;
+let bold = false, italic = false;
+let detectedLines = [];
+
+function resizeOverlay() {
+  const rect = canvas.getBoundingClientRect();
+  overlay.width = rect.width;
+  overlay.height = rect.height;
+  overlay.style.width = rect.width + 'px';
+  overlay.style.height = rect.height + 'px';
+}
+
+function clearOverlay() {
+  overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+}
+
+function drawSelection() {
+  clearOverlay();
+  if (!selection) return;
+  const scaleX = overlay.width / canvas.width;
+  const scaleY = overlay.height / canvas.height;
+  overlayCtx.strokeStyle = '#ffff00';
+  overlayCtx.lineWidth = 2;
+  overlayCtx.setLineDash([5, 5]);
+  overlayCtx.strokeRect(
+    selection.x * scaleX, selection.y * scaleY,
+    selection.w * scaleX, selection.h * scaleY
+  );
+  overlayCtx.setLineDash([]);
+  
+  bboxInfo.textContent = `Bbox: x=${Math.round(selection.x)}, y=${Math.round(selection.y)}, w=${Math.round(selection.w)}, h=${Math.round(selection.h)} | Fuente: ${document.getElementById('fontSize').value}px`;
+}
+
+document.getElementById('fileInput').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const img = new Image();
+  img.onload = () => {
+    canvas.width = img.width;
+    canvas.height = img.height;
+    ctx.drawImage(img, 0, 0);
+    originalImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    setTimeout(() => { resizeOverlay(); clearOverlay(); }, 100);
+    status.textContent = `Imagen cargada: ${img.width}x${img.height}px`;
+  };
+  img.src = URL.createObjectURL(file);
+});
+
+document.getElementById('btnOCR').addEventListener('click', async () => {
+  if (!originalImageData) { alert('Carga una imagen primero'); return; }
+  status.textContent = '🔍 Analizando texto... (puede tardar)';
+  try {
+    const { data } = await Tesseract.recognize(canvas.toDataURL(), 'spa+eng');
+    detectedLines = data.lines.filter(l => l.confidence > 40);
+    
+    const container = document.getElementById('ocrResults');
+    container.innerHTML = '';
+    
+    detectedLines.forEach((line, i) => {
+      const div = document.createElement('div');
+      div.className = 'detected';
+      
+      const textSpan = document.createElement('span');
+      textSpan.className = 'detected-text';
+      textSpan.textContent = `"${line.text.trim()}" (${line.confidence.toFixed(0)}%)`;
+      textSpan.onclick = () => {
+        selection = { 
+          x: line.bbox.x0, y: line.bbox.y0, 
+          w: line.bbox.x1 - line.bbox.x0, 
+          h: line.bbox.y1 - line.bbox.y0 
+        };
+        estimateTextStyle(line.bbox);
+        drawSelection();
+        status.textContent = `Seleccionado: "${line.text.trim()}"`;
+      };
+      
+      const editBtn = document.createElement('button');
+      editBtn.className = 'edit-btn detected-edit';
+      editBtn.textContent = '✏️ Editar';
+      editBtn.onclick = (e) => {
+        e.stopPropagation();
+        editarLinea(line);
+      };
+      
+      div.appendChild(textSpan);
+      div.appendChild(editBtn);
+      container.appendChild(div);
+    });
+    
+    status.textContent = `✅ ${detectedLines.length} líneas detectadas.`;
+  } catch (err) {
+    status.textContent = '❌ Error en OCR: ' + err.message;
+  }
+});
+
+async function editarLinea(line) {
+  const bbox = line.bbox;
+  
+  selection = { 
+    x: bbox.x0, y: bbox.y0, 
+    w: bbox.x1 - bbox.x0, 
+    h: bbox.y1 - bbox.y0 
+  };
+  
+  estimateTextStyle(bbox);
+  drawSelection();
+  status.textContent = `Editando: "${line.text.trim()}" - Borrando...`;
+  
+  await borrarArea(selection.x, selection.y, selection.w, selection.h);
+  
+  const nuevoTexto = prompt(`Reemplazar "${line.text.trim()}" por:`, line.text.trim());
+  if (!nuevoTexto) {
+    clearOverlay();
+    selection = null;
+    status.textContent = 'Edición cancelada';
+    return;
+  }
+  
+  escribirTexto(nuevoTexto, bbox);
+  
+  status.textContent = `✅ Texto reemplazado: "${nuevoTexto}"`;
+}
+
+async function borrarArea(x, y, w, h) {
+  const imgData = ctx.getImageData(x, y, w, h);
+  const borderColors = [];
+  const margin = Math.min(5, Math.floor(w * 0.1));
+  
+  for (let i = 0; i < w; i += 2) {
+    if (y - margin >= 0) {
+      const top = ctx.getImageData(x + i, y - margin, 1, 1).data;
+      borderColors.push([top[0], top[1], top[2]]);
+    }
+    if (y + h + margin < canvas.height) {
+      const bottom = ctx.getImageData(x + i, y + h + margin, 1, 1).data;
+      borderColors.push([bottom[0], bottom[1], bottom[2]]);
+    }
+  }
+  for (let j = 0; j < h; j += 2) {
+    if (x - margin >= 0) {
+      const left = ctx.getImageData(x - margin, y + j, 1, 1).data;
+      borderColors.push([left[0], left[1], left[2]]);
+    }
+    if (x + w + margin < canvas.width) {
+      const right = ctx.getImageData(x + w + margin, y + j, 1, 1).data;
+      borderColors.push([right[0], right[1], right[2]]);
+    }
+  }
+  
+  let avgR = 0, avgG = 0, avgB = 0;
+  borderColors.forEach(c => { avgR += c[0]; avgG += c[1]; avgB += c[2]; });
+  avgR /= borderColors.length || 1;
+  avgG /= borderColors.length || 1;
+  avgB /= borderColors.length || 1;
+  
+  for (let py = 0; py < h; py++) {
+    for (let px = 0; px < w; px++) {
+      const idx = (py * w + px) * 4;
+      const noise = (Math.random() - 0.5) * 5;
+      imgData.data[idx] = Math.max(0, Math.min(255, avgR + noise));
+      imgData.data[idx+1] = Math.max(0, Math.min(255, avgG + noise));
+      imgData.data[idx+2] = Math.max(0, Math.min(255, avgB + noise));
+      imgData.data[idx+3] = 255;
+    }
+  }
+  
+  ctx.putImageData(imgData, x, y);
+  originalImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+}
+
+function escribirTexto(texto, bbox) {
+  if (!selection) return;
+  
+  const size = parseInt(document.getElementById('fontSize').value);
+  const color = document.getElementById('textColor').value;
+  const family = document.getElementById('fontFamily').value;
+  
+  let style = '';
+  if (italic) style += 'italic ';
+  if (bold) style += 'bold ';
+  
+  ctx.font = `${style}${size}px ${family}`;
+  ctx.fillStyle = color;
+  ctx.textBaseline = 'top';
+  ctx.textAlign = 'left';
+  
+  const x = bbox.x0;
+  const y = bbox.y0;
+  
+  ctx.fillText(texto, x, y);
+  
+  console.log(`Texto escrito en (${x}, ${y}) con tamaño ${size}px`);
+  
+  originalImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  selection = null;
+  clearOverlay();
+  bboxInfo.textContent = 'Sin selección';
+}
+
+// ANÁLISIS MEJORADO: Medir altura real + aplicar factor de corrección
+function measureTextHeight(bbox) {
+  const { x0, y0, x1, y1 } = bbox;
+  const width = x1 - x0;
+  const height = y1 - y0;
+  
+  // Expandir bbox verticalmente para capturar todo el texto
+  const expandY = Math.max(5, Math.floor(height * 0.3));
+  const expY0 = Math.max(0, y0 - expandY);
+  const expY1 = Math.min(canvas.height, y1 + expandY);
+  const expHeight = expY1 - expY0;
+  
+  const sample = ctx.getImageData(x0, expY0, width, expHeight);
+  const pixels = sample.data;
+  
+  // Encontrar filas con texto (píxeles oscuros)
+  const textRows = [];
+  for (let y = 0; y < expHeight; y++) {
+    let darkPixelCount = 0;
+    for (let x = 0; x < width; x++) {
+      const idx = (y * width + x) * 4;
+      const brightness = (pixels[idx] + pixels[idx+1] + pixels[idx+2]) / 3;
+      if (brightness < 100) darkPixelCount++;
+    }
+    // Considerar fila como texto si tiene suficientes píxeles oscuros
+    if (darkPixelCount > width * 0.05) {
+      textRows.push(y);
+    }
+  }
+  
+  if (textRows.length === 0) return height;
+  
+  // Altura real del texto
+  const realHeight = textRows[textRows.length - 1] - textRows[0] + 1;
+  
+  console.log(`Altura medida: ${realHeight}px (bbox original: ${height}px, expandY: ${expandY})`);
+  
+  return realHeight;
+}
+
+function estimateTextStyle(bbox) {
+  const { x0, y0, x1, y1 } = bbox;
+  const width = x1 - x0;
+  const height = y1 - y0;
+  
+  console.log('Bbox original:', { x0, y0, x1, y1, width, height });
+  
+  const sample = ctx.getImageData(x0, y0, width, height);
+  const pixels = [];
+  
+  for (let i = 0; i < sample.data.length; i += 4) {
+    const brightness = (sample.data[i] + sample.data[i+1] + sample.data[i+2]) / 3;
+    pixels.push({ r: sample.data[i], g: sample.data[i+1], b: sample.data[i+2], brightness });
+  }
+  
+  pixels.sort((a, b) => a.brightness - b.brightness);
+  const medianBrightness = pixels[Math.floor(pixels.length / 2)].brightness;
+  const isDarkBackground = medianBrightness < 128;
+  
+  const textPixels = isDarkBackground 
+    ? pixels.slice(-Math.floor(pixels.length * 0.3))
+    : pixels.slice(0, Math.floor(pixels.length * 0.3));
+  
+  let avgR = 0, avgG = 0, avgB = 0;
+  textPixels.forEach(p => { avgR += p.r; avgG += p.g; avgB += p.b; });
+  avgR /= textPixels.length;
+  avgG /= textPixels.length;
+  avgB /= textPixels.length;
+  
+  const hex = '#' + [avgR, avgG, avgB].map(v => Math.round(v).toString(16).padStart(2, '0')).join('');
+  document.getElementById('textColor').value = hex;
+  
+  // MEDIR ALTURA REAL
+  const realTextHeight = measureTextHeight(bbox);
+  
+  // APLICAR FACTOR DE CORRECCIÓN
+  // font-size ≈ altura_visual × factor
+  // El factor típico es 1.2-1.3 porque font-size incluye espacio adicional
+  const scaleFactor = parseFloat(document.getElementById('scaleFactor').value);
+  const estimatedFontSize = Math.round(realTextHeight * scaleFactor);
+  const clampedSize = Math.max(8, Math.min(200, estimatedFontSize));
+  
+  document.getElementById('fontSize').value = clampedSize;
+  document.getElementById('fontSizeLabel').textContent = clampedSize;
+  updateFontPreview();
+  
+  console.log(`Fuente estimada: ${clampedSize}px (altura real: ${realTextHeight}px × factor ${scaleFactor})`);
+}
+
+function updateFontPreview() {
+  const size = document.getElementById('fontSize').value;
+  const family = document.getElementById('fontFamily').value;
+  const color = document.getElementById('textColor').value;
+  const preview = document.getElementById('fontPreview');
+  
+  let style = '';
+  if (bold) style += 'font-weight: bold; ';
+  if (italic) style += 'font-style: italic; ';
+  
+  preview.style.cssText = `background: #fff; color: ${color}; padding: 10px; border-radius: 4px; text-align: center; font-size: ${size}px; font-family: ${family}; ${style}`;
+  preview.textContent = 'Vista previa: 02 Oct 2026';
+  
+  if (selection) {
+    bboxInfo.textContent = `Bbox: x=${Math.round(selection.x)}, y=${Math.round(selection.y)}, w=${Math.round(selection.w)}, h=${Math.round(selection.h)} | Fuente: ${size}px`;
+  }
+}
+
+document.getElementById('fontSize').addEventListener('input', e => {
+  document.getElementById('fontSizeLabel').textContent = e.target.value;
+  updateFontPreview();
+});
+
+document.getElementById('scaleFactor').addEventListener('input', e => {
+  document.getElementById('scaleLabel').textContent = e.target.value;
+  // Recalcular si hay selección
+  if (selection) {
+    const currentSize = parseInt(document.getElementById('fontSize').value);
+    const newSize = Math.round(currentSize * (parseFloat(e.target.value) / parseFloat(document.getElementById('scaleFactor').dataset.last || 1.25)));
+    document.getElementById('fontSize').value = Math.max(8, Math.min(200, newSize));
+    document.getElementById('fontSizeLabel').textContent = document.getElementById('fontSize').value;
+    updateFontPreview();
+  }
+  document.getElementById('scaleFactor').dataset.last = e.target.value;
+});
+
+document.getElementById('fontFamily').addEventListener('change', updateFontPreview);
+document.getElementById('textColor').addEventListener('input', updateFontPreview);
+
+document.getElementById('btnBold').onclick = () => { 
+  bold = !bold; 
+  document.getElementById('btnBold').style.background = bold ? '#4fc3f7' : '#555'; 
+  updateFontPreview();
+};
+document.getElementById('btnItalic').onclick = () => { 
+  italic = !italic; 
+  document.getElementById('btnItalic').style.background = italic ? '#4fc3f7' : '#555'; 
+  updateFontPreview();
+};
+
+document.getElementById('btnSave').addEventListener('click', () => {
+  const link = document.createElement('a');
+  link.download = 'imagen_editada.jpg';
+  link.href = canvas.toDataURL('image/jpeg', 0.95);
+  link.click();
+});
+
+document.getElementById('btnReset').addEventListener('click', () => {
+  document.getElementById('fileInput').value = '';
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  clearOverlay();
+  originalImageData = null;
+  selection = null;
+  detectedLines = [];
+  document.getElementById('ocrResults').innerHTML = '';
+  bboxInfo.textContent = 'Sin selección';
+  status.textContent = 'Reiniciado. Carga una nueva imagen.';
+});
+</script>
+</body>
+</html>
