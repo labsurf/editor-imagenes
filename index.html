@@ -439,11 +439,75 @@ document.getElementById('btnItalic').onclick = () => {
 };
 
 document.getElementById('btnSave').addEventListener('click', () => {
-  const link = document.createElement('a');
-  link.download = 'imagen_editada.jpg';
-  link.href = canvas.toDataURL('image/jpeg', 0.95);
-  link.click();
+  // Método compatible con iOS Safari
+  canvas.toBlob((blob) => {
+    if (!blob) {
+      alert('Error al generar la imagen');
+      return;
+    }
+    
+    // Crear URL del blob
+    const url = URL.createObjectURL(blob);
+    
+    // Intentar método 1: Enlace de descarga (funciona en Android/Chrome)
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'imagen_editada.jpg';
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    
+    // Limpiar después de un momento
+    setTimeout(() => {
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }, 100);
+    
+    // Si es iOS, mostrar instrucciones alternativas
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    if (isIOS) {
+      // Abrir en nueva ventana para que el usuario pueda guardar
+      const newWindow = window.open(url, '_blank');
+      if (!newWindow) {
+        // Si el popup fue bloqueado, mostrar la imagen en un modal
+        showImageModal(url);
+      }
+    }
+    
+    status.textContent = '✅ Imagen lista para guardar';
+  }, 'image/jpeg', 0.95);
 });
+
+// Función auxiliar para mostrar imagen en modal (fallback para iOS)
+function showImageModal(url) {
+  const modal = document.createElement('div');
+  modal.style.cssText = `
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.9); z-index: 9999; display: flex;
+    flex-direction: column; align-items: center; justify-content: center;
+    padding: 20px; box-sizing: border-box;
+  `;
+  
+  const img = document.createElement('img');
+  img.src = url;
+  img.style.cssText = 'max-width: 100%; max-height: 80vh; border-radius: 8px;';
+  
+  const instructions = document.createElement('p');
+  instructions.style.cssText = 'color: white; margin-top: 20px; text-align: center; font-size: 14px;';
+  instructions.innerHTML = 'Mantén presionada la imagen y selecciona<br><b>"Guardar imagen"</b>';
+  
+  const closeBtn = document.createElement('button');
+  closeBtn.textContent = 'Cerrar';
+  closeBtn.style.cssText = 'margin-top: 15px; padding: 10px 20px; background: #4fc3f7; border: none; border-radius: 4px; cursor: pointer;';
+  closeBtn.onclick = () => document.body.removeChild(modal);
+  
+  modal.appendChild(img);
+  modal.appendChild(instructions);
+  modal.appendChild(closeBtn);
+  modal.onclick = (e) => { if (e.target === modal) document.body.removeChild(modal); };
+  
+  document.body.appendChild(modal);
+}
 
 document.getElementById('btnReset').addEventListener('click', () => {
   document.getElementById('fileInput').value = '';
