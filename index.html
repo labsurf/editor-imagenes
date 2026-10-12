@@ -2,524 +2,1043 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Editor de Texto en Imágenes JPEG</title>
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<title>Editor de Texto en Imágenes v11</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: system-ui, sans-serif; background: #1a1a1a; color: #eee; padding: 20px; }
-  h1 { margin-bottom: 15px; color: #4fc3f7; }
-  .container { display: grid; grid-template-columns: 1fr 320px; gap: 20px; }
-  .canvas-wrap { background: #2a2a2a; padding: 15px; border-radius: 8px; position: relative; }
-  .canvas-container { position: relative; display: inline-block; }
-  #canvas { max-width: 100%; display: block; background: #fff; border: 2px solid #444; cursor: crosshair; }
-  #overlay { position: absolute; top: 0; left: 0; pointer-events: none; z-index: 10; }
-  .panel { background: #2a2a2a; padding: 15px; border-radius: 8px; }
-  .panel h3 { margin-bottom: 10px; color: #4fc3f7; font-size: 14px; }
-  button, input, select { width: 100%; padding: 8px; margin: 4px 0; border-radius: 4px; border: 1px solid #444; background: #333; color: #eee; }
+  body { font-family: system-ui, sans-serif; background: #1a1a1a; color: #eee; padding: 15px; }
+  h1 { margin-bottom: 12px; color: #4fc3f7; font-size: 18px; }
+  .container { display: grid; grid-template-columns: 1fr 320px; gap: 15px; }
+  .canvas-wrap { background: #2a2a2a; padding: 12px; border-radius: 8px; position: relative; }
+  .canvas-container { position: relative; display: inline-block; max-width: 100%; }
+  #canvas { max-width: 100%; display: block; background: #fff; border: 2px solid #444; }
+  #overlay { position: absolute; top: 0; left: 0; pointer-events: none; }
+  #overlay.mark { pointer-events: auto; cursor: crosshair; }
+  #pipTooltip { position: absolute; pointer-events: none; background: rgba(0,0,0,.85); color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-family: monospace; display: none; z-index: 100; border: 2px solid #ff9800; white-space: nowrap; }
+  #pipTooltip.active { display: block; }
+  #pipTooltip .swatch-mini { display: inline-block; width: 14px; height: 14px; border: 1px solid #fff; vertical-align: middle; margin-right: 4px; border-radius: 2px; }
+  #debugCanvas { max-width: 100%; display: block; margin-top: 8px; border: 1px solid #555; image-rendering: pixelated; }
+  .panel { background: #2a2a2a; padding: 12px; border-radius: 8px; max-height: 92vh; overflow-y: auto; }
+  .panel h3 { margin: 12px 0 8px; color: #4fc3f7; font-size: 13px; border-bottom: 1px solid #444; padding-bottom: 4px; }
+  .panel h3:first-child { margin-top: 0; }
+  button, input, select { width: 100%; padding: 7px; margin: 3px 0; border-radius: 4px; border: 1px solid #444; background: #333; color: #eee; font-size: 13px; }
   button { background: #4fc3f7; color: #000; font-weight: bold; cursor: pointer; border: none; }
   button:hover { background: #29b6f6; }
   button.secondary { background: #555; color: #eee; }
-  button.edit-btn { background: #ffb74d; color: #000; }
-  button.edit-btn:hover { background: #ffa726; }
-  .row { display: flex; gap: 5px; }
-  .row > * { flex: 1; }
-  label { font-size: 12px; color: #aaa; display: block; margin-top: 8px; }
-  .status { padding: 8px; background: #333; border-radius: 4px; font-size: 12px; margin-top: 10px; min-height: 40px; }
-  .detected { background: #333; padding: 8px; margin: 3px 0; border-radius: 4px; font-size: 12px; cursor: pointer; border-left: 3px solid #4fc3f7; display: flex; justify-content: space-between; align-items: center; }
-  .detected:hover { background: #444; }
-  .detected-text { flex: 1; }
-  .detected-edit { margin-left: 8px; padding: 4px 8px; font-size: 11px; width: auto; }
-  .font-preview { background: #fff; color: #000; padding: 10px; margin-top: 5px; border-radius: 4px; text-align: center; min-height: 40px; display: flex; align-items: center; justify-content: center; }
-  .bbox-info { background: #222; padding: 6px; margin-top: 5px; border-radius: 4px; font-size: 11px; color: #888; font-family: monospace; }
-  .scale-control { background: #333; padding: 8px; margin-top: 5px; border-radius: 4px; }
-  .scale-control label { color: #4fc3f7; font-size: 11px; }
+  button.warn { background: #ff9800; color: #000; }
+  button.on { background: #66bb6a !important; color: #fff !important; }
+  button.tiny { width: auto; min-width: 26px; padding: 3px 6px; font-size: 11px; background: #455a64; color: #fff; margin: 0; }
+  button.success { background: #66bb6a; color: #fff; font-size: 14px; padding: 10px; }
+  button.success:hover { background: #4caf50; }
+  button.success:disabled { background: #555; color: #888; cursor: not-allowed; }
+  label { font-size: 11px; color: #aaa; display: block; margin-top: 6px; }
+  .status { padding: 8px; background: #333; border-radius: 4px; font-size: 12px; margin-top: 8px; min-height: 36px; }
+  .status.err { background: #4a1010; color: #ff8a80; }
+  .detected { background: #333; padding: 6px 8px; margin: 3px 0; border-radius: 4px; font-size: 12px; cursor: pointer; border-left: 3px solid #4fc3f7; display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+  .detected:hover { background: #1a3a4a; border-left-color: #ffff00; }
+  .detected.selected { background: #2a4a1a; border-left-color: #66bb6a; }
+  .detected.locked { border-left-color: #29b6f6; }
+  .detected.locked:hover { background: #0a2a3a; border-left-color: #29b6f6; }
+  .detected.refmode { background: #3a2a0a; border-left-color: #ff9800; }
+  .num-badge { display: inline-block; min-width: 22px; text-align: center; background: #26c6da; color: #000; font-weight: bold; border-radius: 3px; padding: 1px 4px; margin-right: 6px; font-size: 11px; }
+  .num-badge.lock { background: #29b6f6; }
+  .detected.selected .num-badge { background: #66bb6a; }
+  .detected-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .detected-edit { padding: 3px 8px; font-size: 11px; width: auto; margin: 0; background: #ffb74d; color: #000; }
+  .info-box { background: #222; padding: 6px; margin-top: 6px; border-radius: 4px; font-size: 10px; color: #888; font-family: monospace; }
+  .control-group { background: #2a2a3a; padding: 8px; margin: 6px 0; border-radius: 4px; border-left: 3px solid #4fc3f7; }
+  .control-group label { color: #4fc3f7; font-size: 11px; }
+  .hint { background: #0a2a3a; border-left: 3px solid #29b6f6; padding: 8px; margin: 8px 0; border-radius: 4px; font-size: 11px; color: #81d4fa; }
+  .toggle-row { display: flex; gap: 5px; }
+  .toggle-row button { flex: 1; }
+  .fine { display: flex; gap: 5px; align-items: center; margin-top: 4px; }
+  .fine button { width: auto; min-width: 40px; padding: 5px 8px; font-size: 13px; background: #37474f; color: #fff; }
+  .fine span { flex: 1; text-align: center; font-family: monospace; color: #80deea; font-size: 12px; }
+  .swatchrow { display: flex; gap: 6px; align-items: center; margin: 6px 0; flex-wrap: wrap; }
+  .swatchrow span { font-size: 10px; color: #aaa; }
+  .swatch { width: 28px; height: 28px; border-radius: 5px; border: 2px solid #888; cursor: pointer; padding: 0; }
+  .swatch:hover { border-color: #fff; transform: scale(1.08); }
+  .swatch.active { border-color: #ffff00; box-shadow: 0 0 0 2px #ffff00; }
+  #editModal { position: fixed; inset: 0; background: rgba(0,0,0,.8); z-index: 9999; display: none; align-items: center; justify-content: center; padding: 14px; }
+  #editModal.open { display: flex; }
+  .modal-box { background: #2a2a2a; border: 1px solid #4fc3f7; border-radius: 10px; padding: 14px; width: 100%; max-width: 540px; max-height: 92vh; overflow-y: auto; }
+  .modal-box h2 { color: #4fc3f7; font-size: 15px; margin-bottom: 8px; }
+  #mPreviewWrap { background: #fff; border: 1px solid #666; border-radius: 6px; padding: 6px; margin-bottom: 8px; overflow: auto; text-align: center; }
+  #mPreview { display: inline-block; max-width: 100%; }
+  #mInput { font-size: 16px; padding: 9px; background: #fff; color: #000; border: 1px solid #888; }
+  .palette-title { color: #ffb74d; font-size: 12px; margin: 10px 0 5px; }
+  .palette { display: flex; flex-wrap: wrap; gap: 5px; }
+  .palette button { width: auto; min-width: 34px; padding: 5px 7px; font-size: 15px; background: #3a3a4a; color: #fff; border: 1px solid #555; display: flex; align-items: center; justify-content: center; }
+  .palette button:hover { background: #4fc3f7; color: #000; }
+  .palette button canvas { display: block; }
+  .keyhelp { margin-top: 8px; font-size: 10px; color: #9aa; line-height: 1.45; background: #222; padding: 7px; border-radius: 6px; }
+  .keyhelp b { color: #ffd54f; }
+  .keyhelp code { background: #333; color: #80deea; padding: 1px 4px; border-radius: 3px; }
+  .modal-actions { display: flex; gap: 8px; margin-top: 12px; }
+  .modal-actions button { flex: 1; padding: 11px; font-size: 14px; }
+  .modal-actions .ok { background: #66bb6a; color: #fff; }
+  .modal-actions .ok:hover { background: #4caf50; }
+  .modal-actions .cancel { background: #555; color: #eee; }
 </style>
 </head>
 <body>
 
-<h1>️ Editor de Texto en Imágenes JPEG</h1>
+<h1>🖼️ Editor de Texto v11 — color con fondo global + pipeta en vivo</h1>
 
 <div class="container">
   <div class="canvas-wrap">
     <div class="canvas-container" id="canvasContainer">
-      <canvas id="canvas"></canvas>
+      <canvas id="canvas" width="600" height="400"></canvas>
       <canvas id="overlay"></canvas>
+      <div id="pipTooltip"><span class="swatch-mini"></span><span class="label"></span></div>
     </div>
-    <div class="status" id="status">Carga una imagen para comenzar</div>
+    <div class="status" id="status">v11 · 1) Carga → 2) Detectar → 3) 🎯/✋ → 4) Editar → 5) Guardar</div>
+    <label style="margin-top:8px;color:#888;font-size:10px;">🔍 Depuración (blanco=negro):</label>
+    <canvas id="debugCanvas"></canvas>
   </div>
 
   <div class="panel">
     <h3>1. Cargar imagen</h3>
-    <input type="file" id="fileInput" accept="image/jpeg,image/jpg">
+    <input type="file" id="fileInput" accept="image/jpeg,image/jpg,image/png,image/webp">
 
-    <h3 style="margin-top:15px">2. Detectar texto (OCR)</h3>
-    <button id="btnOCR">🔍 Detectar texto</button>
-    <div id="ocrResults" style="max-height:300px;overflow-y:auto;margin-top:8px"></div>
+    <h3>2. Detectar texto</h3>
+    <button id="btnDetect">🔍 Detectar texto (agrupa palabras)</button>
+    <div class="control-group">
+      <label>📐 Tamaño mínimo de letra (px): <span id="minSizeLabel">8</span></label>
+      <input type="range" id="minSize" value="8" min="3" max="30" step="1">
+    </div>
+    <div class="control-group">
+      <label>📏 Tamaño máximo de mancha (px): <span id="maxSizeLabel">400</span></label>
+      <input type="range" id="maxSize" value="400" min="50" max="900" step="10">
+    </div>
+    <div class="control-group">
+      <label>↔️ Gap para unir palabras (px): <span id="gapLabel">10</span></label>
+      <input type="range" id="gapSize" value="10" min="2" max="80" step="1">
+    </div>
+    <div class="control-group">
+      <label>↕️ Salto de altura que separa grupo (×): <span id="jumpLabel">1.5</span></label>
+      <input type="range" id="jump" value="1.5" min="1.2" max="2.5" step="0.1">
+    </div>
 
-    <h3 style="margin-top:15px">3. Formato del texto</h3>
+    <h3>3. Corregir detección a mano</h3>
+    <div class="hint">🎯 <b>Marcar símbolo</b>: clic sobre icono/logo → 🔒 intocable. ✋ <b>Agrupar manual</b>: arrastrá un rect → fusiona cajas o crea una nueva. <b>⇄</b> alterna · <b>↩</b> deshace.</div>
+    <div class="control-group">
+      <div class="toggle-row">
+        <button id="btnMark" class="warn">🎯 Marcar símbolo: OFF</button>
+        <button id="btnGroup" class="warn">✋ Agrupar manual: OFF</button>
+      </div>
+      <div class="toggle-row">
+        <button id="btnUndoMark" class="secondary">↩ Deshacer</button>
+        <button id="btnRedetect" class="secondary">↻ Re-detectar</button>
+      </div>
+    </div>
+    <div id="ocrResults" style="max-height:200px;overflow-y:auto;margin-top:8px"></div>
+
+    <h3>4. Editar selección y color</h3>
+    <div class="control-group">
+      <button id="btnRefMode" class="warn" disabled>📏 Tomar ALTO de otra caja…</button>
+      <button id="btnPip" class="warn">🖱️ Pipeta: ver color en vivo + clic para fijar</button>
+      <label style="font-size:10px;color:#ccc">🖱️ ahora muestra el color <b>bajo el cursor en vivo</b> (tooltip naranja). Clic sobre el trazo de la letra para fijarlo. Si cae en fondo, lo avisa.</label>
+      <div class="info-box" id="refInfo">Referencia: (auto = alto de renglón y color propio)</div>
+    </div>
+    <div class="control-group">
+      <label>🧽 Padding de borrado: <span id="paddingLabel">12</span>px</label>
+      <input type="range" id="paddingSize" value="12" min="0" max="50" step="2">
+    </div>
+    <button id="btnEditSelection" class="success" disabled>✏️ BORRAR Y ESCRIBIR NUEVO TEXTO</button>
+
+    <h3>5. Formato del texto nuevo</h3>
+    <div class="control-group">
+      <label>✚ Corrección de alto (px): <span id="sizeFixLabel">2</span></label>
+      <input type="range" id="sizeFix" value="2" min="-6" max="12" step="1">
+    </div>
     <label>Fuente</label>
-    <select id="fontFamily">
-      <option value="Arial">Arial</option>
-      <option value="Times New Roman">Times New Roman</option>
-      <option value="Courier New">Courier New</option>
-      <option value="Georgia">Georgia</option>
-      <option value="Verdana">Verdana</option>
-      <option value="Impact">Impact</option>
+    <select id="mFontFamily">
+      <option value="Arial">Arial</option><option value="Helvetica">Helvetica</option>
+      <option value="sans-serif">Sans-serif (genérica)</option><option value="Times New Roman">Times New Roman</option>
+      <option value="Georgia">Georgia</option><option value="Verdana">Verdana</option>
+      <option value="Courier New">Courier New</option><option value="Impact">Impact</option>
     </select>
-    <label>Tamaño (px): <span id="fontSizeLabel">24</span></label>
-    <input type="range" id="fontSize" value="24" min="8" max="200">
-    
-    <div class="scale-control">
-      <label>⚙️ Factor de escala: <span id="scaleLabel">1.25</span></label>
-      <input type="range" id="scaleFactor" value="1.25" min="1.0" max="2.0" step="0.05">
-      <label style="font-size:10px;color:#666">Ajusta si el texto queda grande/pequeño</label>
+    <label>Tamaño base (px): <span id="mFontSizeLabel">40</span></label>
+    <input type="range" id="mFontSize" value="40" min="6" max="200">
+    <div class="fine">
+      <button data-action="minus">−1</button>
+      <span id="fineLabel">auto</span>
+      <button data-action="plus">+1</button>
+      <button data-action="resetAuto" class="secondary" style="width:auto">Auto</button>
     </div>
-    
-    <label>Color del texto</label>
-    <input type="color" id="textColor" value="#000000">
+    <label>Color (auto = tinta propia sobre fondo global; o muestras/pipeta)</label>
+    <input type="color" id="mColor" value="#000000">
     <label>Estilo</label>
-    <div class="row">
-      <button id="btnBold" class="secondary">Negrita</button>
-      <button id="btnItalic" class="secondary">Cursiva</button>
-    </div>
-    <div class="font-preview" id="fontPreview">Vista previa</div>
-    <div class="bbox-info" id="bboxInfo">Sin selección</div>
+    <div class="toggle-row"><button id="mBold" class="secondary" data-action="bold">Negrita</button><button id="mItalic" class="secondary" data-action="italic">Cursiva</button></div>
+    <label>Alineación en la caja</label>
+    <div class="toggle-row"><button id="mAlignLeft" class="secondary on" data-action="align" data-val="left">Izq</button><button id="mAlignCenter" class="secondary" data-action="align" data-val="center">Centro</button><button id="mAlignRight" class="secondary" data-action="align" data-val="right">Der</button></div>
+    <div class="info-box" id="bboxInfo">Sin selección</div>
 
-    <h3 style="margin-top:15px">4. Exportar</h3>
+    <h3>6. Exportar</h3>
     <button id="btnSave">💾 Guardar JPEG</button>
     <button id="btnReset" class="secondary">🔄 Reiniciar</button>
   </div>
 </div>
 
+<div id="editModal">
+  <div class="modal-box">
+    <h2>✏️ Editor de texto (v11)</h2>
+    <div id="mPreviewWrap"><canvas id="mPreview"></canvas></div>
+    <div class="swatchrow"><span>Tintas de esta imagen:</span><span id="mSwatches" style="display:flex;gap:6px;"></span></div>
+    <div class="toggle-row"><button data-action="recolor" class="secondary">🎨 Re-muestrear color original de esta caja</button></div>
+    <input type="text" id="mInput" placeholder="Texto nuevo… ([CAL] [CLK] [ALARM] = iconos monocromos). Vacío = solo borrar." autocomplete="off" spellcheck="false">
+    <div class="palette-title">🎛️ Paleta (iconos monocromos + caracteres):</div>
+    <div class="palette" id="mPalette"></div>
+    <div class="keyhelp">
+      <b>Color:</b> muestra de la imagen, 🖱️ pipeta en vivo, o 🎨 re-muestrear esta caja. El auto usa el <b>fondo global</b> de la imagen como referencia (no el del snapshot), así no se confunde con el banner morado/azul.<br>
+      <b>Alto:</b> banda densa del grupo sin símbolo + ✚. 📏 presta solo alto.<br>
+      <b>Iconos:</b> <code>[CAL]</code> <code>[CLK]</code> <code>[ALARM]</code> monocromos; no pegues emoji 📅.
+    </div>
+    <div class="modal-actions">
+      <button class="ok" data-action="apply">✔ Aplicar a la imagen</button>
+      <button class="cancel" data-action="cancel">Cancelar</button>
+    </div>
+  </div>
+</div>
+
 <script>
-const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d');
-const overlay = document.getElementById('overlay');
-const overlayCtx = overlay.getContext('2d');
-const status = document.getElementById('status');
-const bboxInfo = document.getElementById('bboxInfo');
-
-let originalImageData = null;
-let selection = null;
-let bold = false, italic = false;
-let detectedLines = [];
-
-function resizeOverlay() {
-  const rect = canvas.getBoundingClientRect();
-  overlay.width = rect.width;
-  overlay.height = rect.height;
-  overlay.style.width = rect.width + 'px';
-  overlay.style.height = rect.height + 'px';
-}
-
-function clearOverlay() {
-  overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
-}
-
-function drawSelection() {
-  clearOverlay();
-  if (!selection) return;
-  const scaleX = overlay.width / canvas.width;
-  const scaleY = overlay.height / canvas.height;
-  overlayCtx.strokeStyle = '#ffff00';
-  overlayCtx.lineWidth = 2;
-  overlayCtx.setLineDash([5, 5]);
-  overlayCtx.strokeRect(
-    selection.x * scaleX, selection.y * scaleY,
-    selection.w * scaleX, selection.h * scaleY
-  );
-  overlayCtx.setLineDash([]);
-  
-  bboxInfo.textContent = `Bbox: x=${Math.round(selection.x)}, y=${Math.round(selection.y)}, w=${Math.round(selection.w)}, h=${Math.round(selection.h)} | Fuente: ${document.getElementById('fontSize').value}px`;
-}
-
-document.getElementById('fileInput').addEventListener('change', e => {
-  const file = e.target.files[0];
-  if (!file) return;
-  const img = new Image();
-  img.onload = () => {
-    canvas.width = img.width;
-    canvas.height = img.height;
-    ctx.drawImage(img, 0, 0);
-    originalImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    setTimeout(() => { resizeOverlay(); clearOverlay(); }, 100);
-    status.textContent = `Imagen cargada: ${img.width}x${img.height}px`;
-  };
-  img.src = URL.createObjectURL(file);
+window.addEventListener('error', function(e){
+  var s = document.getElementById('status');
+  if (s) { s.className = 'status err'; s.textContent = '💥 JS: ' + e.message + '  (línea ' + (e.lineno || '?') + ').'; }
 });
-
-document.getElementById('btnOCR').addEventListener('click', async () => {
-  if (!originalImageData) { alert('Carga una imagen primero'); return; }
-  status.textContent = '🔍 Analizando texto... (puede tardar)';
-  try {
-    const { data } = await Tesseract.recognize(canvas.toDataURL(), 'spa+eng');
-    detectedLines = data.lines.filter(l => l.confidence > 40);
-    
-    const container = document.getElementById('ocrResults');
-    container.innerHTML = '';
-    
-    detectedLines.forEach((line, i) => {
-      const div = document.createElement('div');
-      div.className = 'detected';
-      
-      const textSpan = document.createElement('span');
-      textSpan.className = 'detected-text';
-      textSpan.textContent = `"${line.text.trim()}" (${line.confidence.toFixed(0)}%)`;
-      textSpan.onclick = () => {
-        selection = { 
-          x: line.bbox.x0, y: line.bbox.y0, 
-          w: line.bbox.x1 - line.bbox.x0, 
-          h: line.bbox.y1 - line.bbox.y0 
-        };
-        estimateTextStyle(line.bbox);
-        drawSelection();
-        status.textContent = `Seleccionado: "${line.text.trim()}"`;
-      };
-      
-      const editBtn = document.createElement('button');
-      editBtn.className = 'edit-btn detected-edit';
-      editBtn.textContent = '✏️ Editar';
-      editBtn.onclick = (e) => {
-        e.stopPropagation();
-        editarLinea(line);
-      };
-      
-      div.appendChild(textSpan);
-      div.appendChild(editBtn);
-      container.appendChild(div);
-    });
-    
-    status.textContent = `✅ ${detectedLines.length} líneas detectadas.`;
-  } catch (err) {
-    status.textContent = '❌ Error en OCR: ' + err.message;
+setTimeout(function(){
+  if (window.__editorReady !== true) {
+    var s = document.getElementById('status');
+    if (s) { s.className = 'status err'; s.textContent = '💥 El script no arrancó (v11). Abrí F12 > Console y copiame la primera línea roja.'; }
   }
-});
+}, 4000);
+</script>
 
-async function editarLinea(line) {
-  const bbox = line.bbox;
-  
-  selection = { 
-    x: bbox.x0, y: bbox.y0, 
-    w: bbox.x1 - bbox.x0, 
-    h: bbox.y1 - bbox.y0 
-  };
-  
-  estimateTextStyle(bbox);
-  drawSelection();
-  status.textContent = `Editando: "${line.text.trim()}" - Borrando...`;
-  
-  await borrarArea(selection.x, selection.y, selection.w, selection.h);
-  
-  const nuevoTexto = prompt(`Reemplazar "${line.text.trim()}" por:`, line.text.trim());
-  if (!nuevoTexto) {
-    clearOverlay();
-    selection = null;
-    status.textContent = 'Edición cancelada';
-    return;
-  }
-  
-  escribirTexto(nuevoTexto, bbox);
-  
-  status.textContent = `✅ Texto reemplazado: "${nuevoTexto}"`;
-}
+<script>
+try {
+  var canvas = document.getElementById('canvas');
+  var ctx = canvas.getContext('2d', { willReadFrequently: true });
+  var overlay = document.getElementById('overlay');
+  var overlayCtx = overlay.getContext('2d');
+  var debugCanvas = document.getElementById('debugCanvas');
+  var debugCtx = debugCanvas.getContext('2d');
+  var statusEl = document.getElementById('status');
+  var bboxInfo = document.getElementById('bboxInfo');
+  var refInfo = document.getElementById('refInfo');
+  var fineLabel = document.getElementById('fineLabel');
+  var pipTooltip = document.getElementById('pipTooltip');
+  var btnEditSelection = document.getElementById('btnEditSelection');
+  var btnRefMode = document.getElementById('btnRefMode');
+  var btnPip = document.getElementById('btnPip');
+  var btnMark = document.getElementById('btnMark');
+  var btnGroup = document.getElementById('btnGroup');
+  var btnUndoMark = document.getElementById('btnUndoMark');
+  var btnRedetect = document.getElementById('btnRedetect');
+  var mPreview = document.getElementById('mPreview'); var mCtx = mPreview.getContext('2d');
+  var mSwatches = document.getElementById('mSwatches');
+  var mInput = document.getElementById('mInput'); var mFontFamily = document.getElementById('mFontFamily');
+  var mColor = document.getElementById('mColor'); var mFontSize = document.getElementById('mFontSize');
+  var mFontSizeLabel = document.getElementById('mFontSizeLabel'); var mBold = document.getElementById('mBold');
+  var mItalic = document.getElementById('mItalic'); var mPalette = document.getElementById('mPalette');
+  var editModal = document.getElementById('editModal');
+  var alignBtns = ['mAlignLeft','mAlignCenter','mAlignRight'].map(function(id){ return document.getElementById(id); });
 
-async function borrarArea(x, y, w, h) {
-  const imgData = ctx.getImageData(x, y, w, h);
-  const borderColors = [];
-  const margin = Math.min(5, Math.floor(w * 0.1));
-  
-  for (let i = 0; i < w; i += 2) {
-    if (y - margin >= 0) {
-      const top = ctx.getImageData(x + i, y - margin, 1, 1).data;
-      borderColors.push([top[0], top[1], top[2]]);
+  var cleanData = null, originalImageData = null, dominantInks = [];
+  var globalBgLum = 240;   // ★ v11: luminancia de fondo global de la imagen entera
+  var selection = null, detectedLines = [], hoverIndex = null, ed = null;
+  var refMode = false, refBox = null, mAlignVal = 'left';
+  var pipMode = false, colorPick = null;
+  var iconBoxes = [];
+  var markMode = false, groupMode = false, markStack = [], medHGlobal = 24;
+  var tinyMerged = 0;
+  var dragRect = null, dragging = false, dragStart = null;
+
+  function setStatus(m){ statusEl.className = 'status'; statusEl.textContent = m; }
+  function resizeOverlay(){ var r = canvas.getBoundingClientRect(); overlay.width = r.width || 1; overlay.height = r.height || 1; overlay.style.width = overlay.width + 'px'; overlay.style.height = overlay.height + 'px'; }
+  function clearOverlay(){ overlayCtx.clearRect(0, 0, overlay.width, overlay.height); }
+  function cloneImageData(s){ return new ImageData(new Uint8ClampedArray(s.data), s.width, s.height); }
+  function crop(imgData, x, y, w, h){ var out = ctx.createImageData(w, h); var sw = imgData.width; for (var yy = 0; yy < h; yy++){ var s = ((y + yy) * sw + x) * 4, d = yy * w * 4; out.data.set(imgData.data.subarray(s, s + w * 4)); } return out; }
+  function medianArr(arr){ if (!arr.length) return 0; var a = Array.from(arr).sort(function(x,y){ return x - y; }); return a[a.length >> 1]; }
+  function clamp(v,a,b){ return v < a ? a : (v > b ? b : v); }
+  function rebuildIconBoxes(){ iconBoxes = detectedLines.filter(function(l){ return l.kind === 'icon'; }).map(function(l){ return { x: l.x, y: l.y, w: l.w, h: l.h }; }); }
+  function copyLines(){ return detectedLines.map(function(l){ return { x: l.x, y: l.y, w: l.w, h: l.h, kind: l.kind, rowH: l.rowH, editable: l.editable }; }); }
+  function fixNow(){ return +document.getElementById('sizeFix').value; }
+  function hexOf(r,g,b){ return '#' + [r,g,b].map(function(v){ return Math.round(clamp(v,0,255)).toString(16).padStart(2,'0'); }).join(''); }
+  function lumOfHex(hx){ var r=parseInt(hx.substr(1,2),16), g=parseInt(hx.substr(3,2),16), b=parseInt(hx.substr(5,2),16); return (r+g+b)/3; }
+  function setOverlayInteractive(){ overlay.classList.toggle('mark', markMode || pipMode || groupMode); }
+  function rectsHit(a, b){ return !(a.x + a.w < b.x || b.x + b.w < a.x || a.y + a.h < b.y || b.y + b.h < a.y); }
+
+  // ★ v11: calcular fondo global al cargar (mediana de píxeles NO saturados → excluye banners de color)
+  function computeGlobalBg(img){
+    var d = img.data, W = img.width, H = img.height, samples = [];
+    for (var i = 0; i < d.length; i += 4){
+      var R=d[i], G=d[i+1], B=d[i+2], sat=Math.max(R,G,B)-Math.min(R,G,B), br=(R+G+B)/3;
+      if (sat < 50 && br > 100) samples.push(br);   // fondo neutro claro
     }
-    if (y + h + margin < canvas.height) {
-      const bottom = ctx.getImageData(x + i, y + h + margin, 1, 1).data;
-      borderColors.push([bottom[0], bottom[1], bottom[2]]);
-    }
+    return samples.length ? medianArr(samples) : 240;
   }
-  for (let j = 0; j < h; j += 2) {
-    if (x - margin >= 0) {
-      const left = ctx.getImageData(x - margin, y + j, 1, 1).data;
-      borderColors.push([left[0], left[1], left[2]]);
-    }
-    if (x + w + margin < canvas.width) {
-      const right = ctx.getImageData(x + w + margin, y + j, 1, 1).data;
-      borderColors.push([right[0], right[1], right[2]]);
-    }
-  }
-  
-  let avgR = 0, avgG = 0, avgB = 0;
-  borderColors.forEach(c => { avgR += c[0]; avgG += c[1]; avgB += c[2]; });
-  avgR /= borderColors.length || 1;
-  avgG /= borderColors.length || 1;
-  avgB /= borderColors.length || 1;
-  
-  for (let py = 0; py < h; py++) {
-    for (let px = 0; px < w; px++) {
-      const idx = (py * w + px) * 4;
-      const noise = (Math.random() - 0.5) * 5;
-      imgData.data[idx] = Math.max(0, Math.min(255, avgR + noise));
-      imgData.data[idx+1] = Math.max(0, Math.min(255, avgG + noise));
-      imgData.data[idx+2] = Math.max(0, Math.min(255, avgB + noise));
-      imgData.data[idx+3] = 255;
-    }
-  }
-  
-  ctx.putImageData(imgData, x, y);
-  originalImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-}
 
-function escribirTexto(texto, bbox) {
-  if (!selection) return;
-  
-  const size = parseInt(document.getElementById('fontSize').value);
-  const color = document.getElementById('textColor').value;
-  const family = document.getElementById('fontFamily').value;
-  
-  let style = '';
-  if (italic) style += 'italic ';
-  if (bold) style += 'bold ';
-  
-  ctx.font = `${style}${size}px ${family}`;
-  ctx.fillStyle = color;
-  ctx.textBaseline = 'top';
-  ctx.textAlign = 'left';
-  
-  const x = bbox.x0;
-  const y = bbox.y0;
-  
-  ctx.fillText(texto, x, y);
-  
-  console.log(`Texto escrito en (${x}, ${y}) con tamaño ${size}px`);
-  
-  originalImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  selection = null;
-  clearOverlay();
-  bboxInfo.textContent = 'Sin selección';
-}
-
-// ANÁLISIS MEJORADO: Medir altura real + aplicar factor de corrección
-function measureTextHeight(bbox) {
-  const { x0, y0, x1, y1 } = bbox;
-  const width = x1 - x0;
-  const height = y1 - y0;
-  
-  // Expandir bbox verticalmente para capturar todo el texto
-  const expandY = Math.max(5, Math.floor(height * 0.3));
-  const expY0 = Math.max(0, y0 - expandY);
-  const expY1 = Math.min(canvas.height, y1 + expandY);
-  const expHeight = expY1 - expY0;
-  
-  const sample = ctx.getImageData(x0, expY0, width, expHeight);
-  const pixels = sample.data;
-  
-  // Encontrar filas con texto (píxeles oscuros)
-  const textRows = [];
-  for (let y = 0; y < expHeight; y++) {
-    let darkPixelCount = 0;
-    for (let x = 0; x < width; x++) {
-      const idx = (y * width + x) * 4;
-      const brightness = (pixels[idx] + pixels[idx+1] + pixels[idx+2]) / 3;
-      if (brightness < 100) darkPixelCount++;
-    }
-    // Considerar fila como texto si tiene suficientes píxeles oscuros
-    if (darkPixelCount > width * 0.05) {
-      textRows.push(y);
-    }
-  }
-  
-  if (textRows.length === 0) return height;
-  
-  // Altura real del texto
-  const realHeight = textRows[textRows.length - 1] - textRows[0] + 1;
-  
-  console.log(`Altura medida: ${realHeight}px (bbox original: ${height}px, expandY: ${expandY})`);
-  
-  return realHeight;
-}
-
-function estimateTextStyle(bbox) {
-  const { x0, y0, x1, y1 } = bbox;
-  const width = x1 - x0;
-  const height = y1 - y0;
-  
-  console.log('Bbox original:', { x0, y0, x1, y1, width, height });
-  
-  const sample = ctx.getImageData(x0, y0, width, height);
-  const pixels = [];
-  
-  for (let i = 0; i < sample.data.length; i += 4) {
-    const brightness = (sample.data[i] + sample.data[i+1] + sample.data[i+2]) / 3;
-    pixels.push({ r: sample.data[i], g: sample.data[i+1], b: sample.data[i+2], brightness });
-  }
-  
-  pixels.sort((a, b) => a.brightness - b.brightness);
-  const medianBrightness = pixels[Math.floor(pixels.length / 2)].brightness;
-  const isDarkBackground = medianBrightness < 128;
-  
-  const textPixels = isDarkBackground 
-    ? pixels.slice(-Math.floor(pixels.length * 0.3))
-    : pixels.slice(0, Math.floor(pixels.length * 0.3));
-  
-  let avgR = 0, avgG = 0, avgB = 0;
-  textPixels.forEach(p => { avgR += p.r; avgG += p.g; avgB += p.b; });
-  avgR /= textPixels.length;
-  avgG /= textPixels.length;
-  avgB /= textPixels.length;
-  
-  const hex = '#' + [avgR, avgG, avgB].map(v => Math.round(v).toString(16).padStart(2, '0')).join('');
-  document.getElementById('textColor').value = hex;
-  
-  // MEDIR ALTURA REAL
-  const realTextHeight = measureTextHeight(bbox);
-  
-  // APLICAR FACTOR DE CORRECCIÓN
-  // font-size ≈ altura_visual × factor
-  // El factor típico es 1.2-1.3 porque font-size incluye espacio adicional
-  const scaleFactor = parseFloat(document.getElementById('scaleFactor').value);
-  const estimatedFontSize = Math.round(realTextHeight * scaleFactor);
-  const clampedSize = Math.max(8, Math.min(200, estimatedFontSize));
-  
-  document.getElementById('fontSize').value = clampedSize;
-  document.getElementById('fontSizeLabel').textContent = clampedSize;
-  updateFontPreview();
-  
-  console.log(`Fuente estimada: ${clampedSize}px (altura real: ${realTextHeight}px × factor ${scaleFactor})`);
-}
-
-function updateFontPreview() {
-  const size = document.getElementById('fontSize').value;
-  const family = document.getElementById('fontFamily').value;
-  const color = document.getElementById('textColor').value;
-  const preview = document.getElementById('fontPreview');
-  
-  let style = '';
-  if (bold) style += 'font-weight: bold; ';
-  if (italic) style += 'font-style: italic; ';
-  
-  preview.style.cssText = `background: #fff; color: ${color}; padding: 10px; border-radius: 4px; text-align: center; font-size: ${size}px; font-family: ${family}; ${style}`;
-  preview.textContent = 'Vista previa: 02 Oct 2026';
-  
-  if (selection) {
-    bboxInfo.textContent = `Bbox: x=${Math.round(selection.x)}, y=${Math.round(selection.y)}, w=${Math.round(selection.w)}, h=${Math.round(selection.h)} | Fuente: ${size}px`;
-  }
-}
-
-document.getElementById('fontSize').addEventListener('input', e => {
-  document.getElementById('fontSizeLabel').textContent = e.target.value;
-  updateFontPreview();
-});
-
-document.getElementById('scaleFactor').addEventListener('input', e => {
-  document.getElementById('scaleLabel').textContent = e.target.value;
-  // Recalcular si hay selección
-  if (selection) {
-    const currentSize = parseInt(document.getElementById('fontSize').value);
-    const newSize = Math.round(currentSize * (parseFloat(e.target.value) / parseFloat(document.getElementById('scaleFactor').dataset.last || 1.25)));
-    document.getElementById('fontSize').value = Math.max(8, Math.min(200, newSize));
-    document.getElementById('fontSizeLabel').textContent = document.getElementById('fontSize').value;
-    updateFontPreview();
-  }
-  document.getElementById('scaleFactor').dataset.last = e.target.value;
-});
-
-document.getElementById('fontFamily').addEventListener('change', updateFontPreview);
-document.getElementById('textColor').addEventListener('input', updateFontPreview);
-
-document.getElementById('btnBold').onclick = () => { 
-  bold = !bold; 
-  document.getElementById('btnBold').style.background = bold ? '#4fc3f7' : '#555'; 
-  updateFontPreview();
-};
-document.getElementById('btnItalic').onclick = () => { 
-  italic = !italic; 
-  document.getElementById('btnItalic').style.background = italic ? '#4fc3f7' : '#555'; 
-  updateFontPreview();
-};
-
-document.getElementById('btnSave').addEventListener('click', () => {
-  // Método compatible con iOS Safari
-  canvas.toBlob((blob) => {
-    if (!blob) {
-      alert('Error al generar la imagen');
-      return;
-    }
-    
-    // Crear URL del blob
-    const url = URL.createObjectURL(blob);
-    
-    // Intentar método 1: Enlace de descarga (funciona en Android/Chrome)
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'imagen_editada.jpg';
-    link.style.display = 'none';
-    document.body.appendChild(link);
-    link.click();
-    
-    // Limpiar después de un momento
-    setTimeout(() => {
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    }, 100);
-    
-    // Si es iOS, mostrar instrucciones alternativas
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    if (isIOS) {
-      // Abrir en nueva ventana para que el usuario pueda guardar
-      const newWindow = window.open(url, '_blank');
-      if (!newWindow) {
-        // Si el popup fue bloqueado, mostrar la imagen en un modal
-        showImageModal(url);
+  function computeDominantInks(img, n){
+    var d = img.data, W = img.width, H = img.height;
+    var bg = globalBgLum;
+    var buckets = {};
+    for (var p = 0; p < W*H; p++){
+      var idx = p*4, R=d[idx], G=d[idx+1], B=d[idx+2], br=(R+G+B)/3;
+      var sat=Math.max(R,G,B)-Math.min(R,G,B);
+      var diff = Math.abs(br - bg);
+      // tinta = claramente diferente del fondo global (oscuro O saturado)
+      if (br < bg - 40 || (sat > 60 && br < bg + 20)){
+        var key=(R>>5)+'_'+(G>>5)+'_'+(B>>5);
+        var bkt=buckets[key]||(buckets[key]={c:0,r:0,g:0,b:0});
+        bkt.c++; bkt.r+=R; bkt.g+=G; bkt.b+=B;
       }
     }
-    
-    status.textContent = '✅ Imagen lista para guardar';
-  }, 'image/jpeg', 0.95);
-});
+    var arr=Object.keys(buckets).map(function(k){return buckets[k];}).sort(function(a,b){return b.c-a.c;}).slice(0,n);
+    return arr.map(function(b){ return hexOf(b.r/b.c, b.g/b.c, b.b/b.c); });
+  }
+  // ★ v11: measureInkColor usa globalBgLum como referencia (no el bg del snapshot)
+  function measureInkColor(img){
+    var w=img.width,h=img.height,d=img.data;
+    var bg = globalBgLum;
+    var px=[];
+    for(var p=0;p<w*h;p++){
+      var idx=p*4,R=d[idx],G=d[idx+1],B=d[idx+2],br=(R+G+B)/3;
+      var sat=Math.max(R,G,B)-Math.min(R,G,B);
+      var diff = Math.abs(br - bg);
+      var strength = diff + sat * 1.2;
+      // tinta = significativamente diferente del fondo GLOBAL
+      if (br < bg - 40 || (sat > 60 && br < bg + 20)) px.push([R,G,B,strength]);
+    }
+    if(!px.length) return null;
+    px.sort(function(a,b){return b[3]-a[3];});
+    var take=px.slice(0,Math.max(6,Math.floor(px.length*0.30)));
+    var hex=hexOf(medianArr(take.map(function(q){return q[0];})), medianArr(take.map(function(q){return q[1];})), medianArr(take.map(function(q){return q[2];})));
+    if (Math.abs(lumOfHex(hex)-bg) < 30) return null;
+    return hex;
+  }
+  function samplePixel(imgX, imgY){
+    if(!cleanData) return null;
+    var W=cleanData.width,H=cleanData.height,d=cleanData.data;
+    var x0=Math.max(0,Math.round(imgX)-1), y0=Math.max(0,Math.round(imgY)-1);
+    var Rs=[],Gs=[],Bs=[],Ls=[];
+    for(var y=y0;y<=y0+2&&y<H;y++)for(var x=x0;x<=x0+2&&x<W;x++){ var i=(y*W+x)*4; Rs.push(d[i]);Gs.push(d[i+1]);Bs.push(d[i+2]);Ls.push((d[i]+d[i+1]+d[i+2])/3); }
+    if(!Rs.length) return null;
+    var hex=hexOf(medianArr(Rs),medianArr(Gs),medianArr(Bs));
+    var sat=Math.max(medianArr(Rs),medianArr(Gs),medianArr(Bs))-Math.min(medianArr(Rs),medianArr(Gs),medianArr(Bs));
+    var lum = lumOfHex(hex);
+    // es fondo si es muy claro Y poco saturado RELATIVO al fondo global
+    var isBg = lum > globalBgLum - 15 && sat < 40;
+    return { hex: hex, lum: lum, sat: sat, isBg: isBg };
+  }
+  function sampleOriginalColor(){
+    var hex=null;
+    if(cleanData&&selection) hex=measureInkColor(crop(cleanData,selection.x,selection.y,selection.w,selection.h));
+    if(!hex&&ed) hex=measureInkColor(ed.snapshot);
+    return hex;
+  }
 
-// Función auxiliar para mostrar imagen en modal (fallback para iOS)
-function showImageModal(url) {
-  const modal = document.createElement('div');
-  modal.style.cssText = `
-    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-    background: rgba(0,0,0,0.9); z-index: 9999; display: flex;
-    flex-direction: column; align-items: center; justify-content: center;
-    padding: 20px; box-sizing: border-box;
-  `;
-  
-  const img = document.createElement('img');
-  img.src = url;
-  img.style.cssText = 'max-width: 100%; max-height: 80vh; border-radius: 8px;';
-  
-  const instructions = document.createElement('p');
-  instructions.style.cssText = 'color: white; margin-top: 20px; text-align: center; font-size: 14px;';
-  instructions.innerHTML = 'Mantén presionada la imagen y selecciona<br><b>"Guardar imagen"</b>';
-  
-  const closeBtn = document.createElement('button');
-  closeBtn.textContent = 'Cerrar';
-  closeBtn.style.cssText = 'margin-top: 15px; padding: 10px 20px; background: #4fc3f7; border: none; border-radius: 4px; cursor: pointer;';
-  closeBtn.onclick = () => document.body.removeChild(modal);
-  
-  modal.appendChild(img);
-  modal.appendChild(instructions);
-  modal.appendChild(closeBtn);
-  modal.onclick = (e) => { if (e.target === modal) document.body.removeChild(modal); };
-  
-  document.body.appendChild(modal);
+  function drawBadge(l,i,sx,sy,color,big,lock){
+    var x=l.x*sx,y=l.y*sy,w=l.w*sx,h=l.h*sy;
+    overlayCtx.strokeStyle=color; overlayCtx.lineWidth=big?3:1.5; overlayCtx.strokeRect(x,y,w,h);
+    var tw=big?26:20,th=big?20:15;
+    overlayCtx.fillStyle=color; overlayCtx.fillRect(x,y-th,tw,th);
+    overlayCtx.fillStyle='#000'; overlayCtx.font='bold '+(big?13:10)+'px sans-serif';
+    overlayCtx.textAlign='center'; overlayCtx.textBaseline='middle';
+    overlayCtx.fillText(lock?'🔒':String(i+1), x+tw/2, y-th/2);
+  }
+  function renderOverlays(){
+    clearOverlay();
+    var sx=(overlay.width/canvas.width)||1, sy=(overlay.height/canvas.height)||1;
+    iconBoxes.forEach(function(b){ overlayCtx.strokeStyle='#29b6f6'; overlayCtx.lineWidth=2; overlayCtx.setLineDash([5,3]); overlayCtx.strokeRect(b.x*sx,b.y*sy,b.w*sx,b.h*sy); overlayCtx.setLineDash([]); });
+    if(detectedLines.length){
+      detectedLines.forEach(function(l,i){ if(hoverIndex===i) return; drawBadge(l,i,sx,sy,l.kind==='icon'?'#29b6f6':'#26c6da',false,l.kind==='icon'); });
+      if(hoverIndex!=null&&detectedLines[hoverIndex]) drawBadge(detectedLines[hoverIndex],hoverIndex,sx,sy,'#ffff00',true,detectedLines[hoverIndex].kind==='icon');
+    }
+    if(selection){ overlayCtx.strokeStyle='#66bb6a'; overlayCtx.lineWidth=3; overlayCtx.setLineDash([7,4]); overlayCtx.strokeRect(selection.x*sx,selection.y*sy,selection.w*sx,selection.h*sy); overlayCtx.setLineDash([]); }
+    if(dragRect){ overlayCtx.strokeStyle='#ff9800'; overlayCtx.lineWidth=2; overlayCtx.setLineDash([4,3]); overlayCtx.strokeRect(dragRect.x*sx,dragRect.y*sy,dragRect.w*sx,dragRect.h*sy); overlayCtx.setLineDash([]); }
+    if(selection){ bboxInfo.textContent=(selection.kind==='icon'?'🔒 Símbolo (intocable): ':'Selección: ')+Math.round(selection.w)+'×'+Math.round(selection.h)+'px'+(selection.rowH?' · alto '+selection.rowH+'px':''); }
+    else { bboxInfo.textContent='Sin selección (clic en una caja de texto de la lista)'; }
+    btnEditSelection.disabled=!(selection&&selection.kind!=='icon');
+  }
+
+  document.getElementById('fileInput').addEventListener('change', function(e){
+    var file=e.target.files[0]; if(!file) return;
+    setStatus('⏳ Leyendo archivo (v11)…');
+    var reader=new FileReader();
+    reader.onerror=function(){ setStatus('❌ No se pudo leer el archivo.'); };
+    reader.onload=function(ev){
+      var img=new Image();
+      img.onerror=function(){ setStatus('❌ El navegador no pudo decodificar la imagen.'); };
+      img.onload=function(){
+        try{
+          canvas.width=img.width; canvas.height=img.height;
+          ctx.clearRect(0,0,canvas.width,canvas.height); ctx.drawImage(img,0,0);
+          var snap=ctx.getImageData(0,0,canvas.width,canvas.height); cleanData=snap; originalImageData=snap; iconBoxes=[]; markStack=[];
+          colorPick=null; refBox=null;
+          globalBgLum = computeGlobalBg(snap);   // ★ v11: calcular ANTES de las tintas
+          dominantInks = computeDominantInks(snap, 4);
+          setTimeout(function(){ resizeOverlay(); clearOverlay(); },50);
+          setStatus('✅ v11 · Imagen cargada: '+img.width+'×'+img.height+'px · fondo global lum='+Math.round(globalBgLum)+' · tintas: '+dominantInks.join(' '));
+          document.getElementById('ocrResults').innerHTML=''; detectedLines=[]; selection=null; hoverIndex=null; refInfo.textContent='Referencia: (auto = alto de renglón y color propio)'; renderOverlays();
+        }catch(err){ setStatus('❌ Error al pintar: '+err.message); }
+      };
+      img.src=ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+
+  function cclBoxes(bin,W,H){
+    var lab=new Int32Array(W*H), par=new Int32Array(W*H+1);
+    for(var i=0;i<par.length;i++)par[i]=i;
+    function find(x){while(par[x]!==x){par[x]=par[par[x]];x=par[x];}return x;}
+    function uni(a,b){var ra=find(a),rb=find(b);if(ra!==rb)par[rb]=ra;}
+    var nl=1;
+    for(var y=0;y<H;y++)for(var x=0;x<W;x++){var idx=y*W+x;if(!bin[idx])continue;
+      var nb=[];if(x>0&&bin[idx-1])nb.push(lab[idx-1]);if(y>0&&bin[idx-W])nb.push(lab[idx-W]);
+      if(x>0&&y>0&&bin[idx-W-1])nb.push(lab[idx-W-1]);if(x<W-1&&y>0&&bin[idx-W+1])nb.push(lab[idx-W+1]);
+      var p=nb.filter(function(n){return n>0;});if(!p.length)lab[idx]=nl++;else{var m=Math.min.apply(null,p);lab[idx]=m;for(var k=0;k<p.length;k++)uni(m,p[k]);}}
+    var boxes=new Map();
+    for(var i2=0;i2<lab.length;i2++){if(!lab[i2])continue;var r=find(lab[i2]);lab[i2]=r;var xx=i2%W,yy=(i2/W)|0;
+      if(!boxes.has(r))boxes.set(r,{minX:xx,minY:yy,maxX:xx,maxY:yy,count:1});
+      else{var b=boxes.get(r);b.minX=Math.min(b.minX,xx);b.minY=Math.min(b.minY,yy);b.maxX=Math.max(b.maxX,xx);b.maxY=Math.max(b.maxY,yy);b.count++;}}
+    return Array.from(boxes.values());
+  }
+  function filterComponents(cs,mn,mx){
+    return cs.filter(function(c){var w=c.maxX-c.minX+1,h=c.maxY-c.minY+1,a=w*h;
+      if(w<mn||h<mn)return false;if(w>mx||h>mx)return false;if(a>mx*mx)return false;
+      var f=c.count/a;if(f>0.95&&a>2500)return false;if(f>0.82&&a>9000)return false;
+      var ar=w/h;if(ar<0.04||ar>25)return false;return true;});
+  }
+
+  function mergeTinyGlobal(lines){
+    var keep = lines.slice();
+    var merged = 0, changed = true;
+    while (changed){
+      changed = false;
+      var ti = -1, bk = null;
+      for (var i = 0; i < keep.length && ti < 0; i++){
+        var t = keep[i]; if (t.kind !== 'text') continue;
+        for (var j = 0; j < keep.length; j++){
+          var k = keep[j]; if (k === t || k.kind !== 'text') continue;
+          if (t.h >= k.h * 0.5) continue;
+          var vcy = t.y + t.h / 2;
+          if (vcy < k.y - 6 || vcy > k.y + k.h + 6) continue;
+          var dx = (t.x >= k.x + k.w) ? (t.x - (k.x + k.w)) : ((k.x >= t.x + t.w) ? (k.x - (t.x + t.w)) : 0);
+          if (dx < k.h * 1.5){
+            var uy = Math.min(k.y, t.y), uy2 = Math.max(k.y + k.h, t.y + t.h);
+            if ((uy2 - uy) <= k.h * 1.3){ ti = i; bk = k; }
+            break;
+          }
+        }
+      }
+      if (ti >= 0 && bk){
+        var tt = keep[ti];
+        var x = Math.min(bk.x, tt.x), y = Math.min(bk.y, tt.y);
+        var x2 = Math.max(bk.x + bk.w, tt.x + tt.w), y2 = Math.max(bk.y + bk.h, tt.y + tt.h);
+        bk.x = x; bk.y = y; bk.w = x2 - x; bk.h = y2 - y;
+        keep.splice(ti, 1); merged++; changed = true;
+      }
+    }
+    tinyMerged = merged;
+    keep.sort(function(a,b){ return (a.y - b.y) || (a.x - b.x); });
+    return keep;
+  }
+
+  function groupTextLines(cs, gapBase, JUMP){
+    if(!cs.length)return[];
+    var E=cs.map(function(c){return{c:c,h:c.maxY-c.minY+1};});
+    medHGlobal=medianArr(E.map(function(e){return e.h;}))||24;
+    E.sort(function(a,b){return((a.c.minY+a.c.maxY)/2)-((b.c.minY+b.c.maxY)/2);});
+    var bands=[],cur=null;
+    for(var i=0;i<E.length;i++){var e=E[i],cy=(e.c.minY+e.c.maxY)/2;
+      if(!cur||Math.abs(cy-cur.cyRef)>medHGlobal*0.8){cur={items:[e],cyRef:cy};bands.push(cur);}
+      else{cur.items.push(e);cur.cyRef=(cur.cyRef*(cur.items.length-1)+cy)/cur.items.length;}}
+    var lines=[];
+    for(var bi=0;bi<bands.length;bi++){
+      var its=bands[bi].items.slice().sort(function(a,b){return a.c.minX-b.c.minX;});
+      var hs=its.map(function(o){return o.h;});var maxH=Math.max.apply(null,hs);
+      var pool=hs.filter(function(v){return v>=maxH*0.45;});var lineH=medianArr(pool)||maxH;
+      var rowH=Math.round(maxH);
+      var gT=Math.max(gapBase,lineH*0.92);
+      var g=null,gBigSum=0,gBigN=0;
+      function bigAvg(){return gBigN?gBigSum/gBigN:lineH;}
+      function flushT(){if(g){lines.push({x:g.x,y:g.y,w:g.r-g.x,h:g.b-g.y,kind:'text',rowH:rowH,editable:true});g=null;gBigSum=0;gBigN=0;}}
+      for(var j=0;j<its.length;j++){var c=its[j].c,x=c.minX,y=c.minY,r=c.maxX+1,bb=c.maxY+1,h=its[j].h;
+        var big=h>=lineH*0.5;
+        if(g&&big){var av=bigAvg();if(h>av*JUMP||h<av/JUMP){flushT();}}
+        if(!g){g={x:x,y:y,r:r,b:bb};if(big){gBigSum+=h;gBigN++;}continue;}
+        if(x-g.r<=gT){g.x=Math.min(g.x,x);g.y=Math.min(g.y,y);g.r=Math.max(g.r,r);g.b=Math.max(g.b,bb);if(big){gBigSum+=h;gBigN++;}}
+        else{flushT();g={x:x,y:y,r:r,b:bb};if(big){gBigSum+=h;gBigN++;}}}
+      flushT();
+    }
+    var out=lines.filter(function(l){return l.w>=8&&l.h>=6;});
+    out=mergeTinyGlobal(out);
+    return out;
+  }
+
+  function runDetect(){
+    if(!cleanData){alert('Carga una imagen primero');return;}
+    var mn=+document.getElementById('minSize').value,mx=+document.getElementById('maxSize').value,gb=+document.getElementById('gapSize').value,JUMP=+document.getElementById('jump').value;
+    setStatus('🔍 Procesando (v11)…');
+    setTimeout(function(){try{
+      var W=canvas.width,H=canvas.height,d=cleanData.data;
+      var bin=new Uint8Array(W*H);
+      for(var i=0,p=0;i<d.length;i+=4,p++){var br=(d[i]+d[i+1]+d[i+2])/3;bin[p]=(br<224)?1:0;}
+      var dbg=debugCtx.createImageData(W,H);for(var k=0;k<bin.length;k++){var v=bin[k]?0:255;dbg.data[k*4]=v;dbg.data[k*4+1]=v;dbg.data[k*4+2]=v;dbg.data[k*4+3]=255;}
+      debugCanvas.width=W;debugCanvas.height=H;debugCtx.putImageData(dbg,0,0);
+      var comps=cclBoxes(bin,W,H),filt=filterComponents(comps,mn,mx),lines=groupTextLines(filt,gb,JUMP);
+      detectedLines=lines;markStack=[];rebuildIconBoxes();hoverIndex=null;selection=null;renderDetectedList(lines);renderOverlays();
+      setStatus('✅ v11 · '+lines.length+' cajas · '+tinyMerged+' punto(s)/coma(s) absorbidos.');
+    }catch(err){setStatus('❌ Error: '+err.message);console.error(err);}},30);
+  }
+  document.getElementById('btnDetect').addEventListener('click',runDetect);
+  btnRedetect.addEventListener('click',runDetect);
+
+  function boxBin(img){var w=img.width,h=img.height,d=img.data;var lums=new Float32Array(w*h);
+    for(var i=0,p=0;i<d.length;i+=4,p++)lums[p]=(d[i]+d[i+1]+d[i+2])/3;var bg=medianArr(lums);
+    var bin=new Uint8Array(w*h);for(var i2=0,p2=0;i2<d.length;i2+=4,p2++){var br=(d[i2]+d[i2+1]+d[i2+2])/3;bin[p2]=(br<bg-40)?1:0;}return{bin:bin,w:w,h:h};}
+  function measureCapHeight(img){
+    var o=boxBin(img);var bin=o.bin,w=o.w,h=o.h;
+    var counts=new Array(h);for(var y=0;y<h;y++)counts[y]=0;
+    for(var y2=0;y2<h;y2++){var c=0;for(var x=0;x<w;x++){if(bin[y2*w+x])c++;}counts[y2]=c;}
+    var maxC=Math.max.apply(null,counts);if(maxC<=0)return Math.round(h*0.7);
+    var th=maxC*0.30,first=-1,last=-1;
+    for(var y3=0;y3<h;y3++){if(counts[y3]>=th){if(first<0)first=y3;last=y3;}}
+    if(first<0)return Math.round(h*0.7);
+    return Math.max(6,last-first+1);
+  }
+
+  function bandRowHAt(imgY){
+    var best=null,bd=1e9;
+    for(var i=0;i<detectedLines.length;i++){var l=detectedLines[i];if(l.kind!=='text')continue;var cy=l.y+l.h/2;var dd=Math.abs(cy-imgY);if(dd<bd){bd=dd;best=l;}}
+    return best?(best.rowH||best.h):medHGlobal;
+  }
+  function subtractRect(box,rx,ry,rw,rh){
+    var out=[];var ix=Math.max(box.x,rx),iy=Math.max(box.y,ry);
+    var ix2=Math.min(box.x+box.w,rx+rw),iy2=Math.min(box.y+box.h,ry+rh);
+    if(ix2<=ix||iy2<=iy){out.push(box);return out;}
+    var pieces=[{x:box.x,y:box.y,w:box.w,h:iy-box.y},{x:box.x,y:iy2,w:box.w,h:(box.y+box.h)-iy2},{x:box.x,y:iy,w:ix-box.x,h:iy2-iy},{x:ix2,y:iy,w:(box.x+box.w)-ix2,h:iy2-iy}];
+    for(var i=0;i<pieces.length;i++){var q=pieces[i];if(q.w>=4&&q.h>=4)out.push(q);}
+    return out;
+  }
+  function recalcRowHeights(lines){
+    var textBoxes=lines.filter(function(l){return l.kind==='text';});
+    var bands=[];
+    textBoxes.forEach(function(t){
+      var cy=t.y+t.h/2,found=null;
+      for(var i=0;i<bands.length;i++){if(Math.abs(bands[i].cy-cy)<medHGlobal*0.8){found=bands[i];break;}}
+      if(!found){found={cy:cy,items:[]};bands.push(found);}
+      found.items.push(t);found.cy=(found.cy*(found.items.length-1)+cy)/found.items.length;
+    });
+    bands.forEach(function(b){
+      var caps=b.items.map(function(t){var snap=crop(cleanData,t.x,t.y,t.w,t.h);return measureCapHeight(snap);}).filter(function(v){return v>0;});
+      if(!caps.length)return;
+      var rh=Math.round(medianArr(caps));
+      b.items.forEach(function(t){t.rowH=rh;});
+    });
+  }
+  function placeMark(imgX,imgY){
+    markStack.push(copyLines());
+    var side=Math.round(bandRowHAt(imgY)*1.15);
+    var rx=clamp(Math.round(imgX-side/2),0,canvas.width-side);
+    var ry=clamp(Math.round(imgY-side/2),0,canvas.height-side);
+    var newLines=[];
+    for(var i=0;i<detectedLines.length;i++){var l=detectedLines[i];
+      if(l.kind==='icon'){newLines.push(l);continue;}
+      var parts=subtractRect(l,rx,ry,side,side);
+      for(var j=0;j<parts.length;j++){var q=parts[j];newLines.push({x:q.x,y:q.y,w:q.w,h:q.h,kind:'text',rowH:l.rowH,editable:true});}}
+    newLines.push({x:rx,y:ry,w:side,h:side,kind:'icon',rowH:0,editable:false,why:'marcado'});
+    newLines.sort(function(a,b){return(a.y-b.y)||(a.x-b.x);});
+    newLines=mergeTinyGlobal(newLines);
+    recalcRowHeights(newLines);
+    detectedLines=newLines;rebuildIconBoxes();selection=null;hoverIndex=null;
+    renderDetectedList(detectedLines);renderOverlays();
+    setStatus('🔒 v11 · Símbolo marcado en ('+rx+','+ry+') '+side+'×'+side+'px.');
+  }
+  function finalizeGroup(rect){
+    if (rect.w < 6 || rect.h < 6) return;
+    var hit = detectedLines.filter(function(l){ return l.kind === 'text' && rectsHit(l, rect); });
+    markStack.push(copyLines());
+    if (hit.length){
+      var x=1e9,y=1e9,x2=-1,y2=-1, rh=0;
+      hit.forEach(function(h){ x=Math.min(x,h.x); y=Math.min(y,h.y); x2=Math.max(x2,h.x+h.w); y2=Math.max(y2,h.y+h.h); rh=Math.max(rh,h.rowH||h.h); });
+      detectedLines = detectedLines.filter(function(l){ return hit.indexOf(l) < 0; });
+      detectedLines.push({ x:x, y:y, w:x2-x, h:y2-y, kind:'text', rowH:rh, editable:true });
+      detectedLines.sort(function(a,b){ return (a.y-b.y)||(a.x-b.x); });
+      setStatus('✋ v11 · '+hit.length+' cajas agrupadas en una. ↩ deshace.');
+    } else {
+      detectedLines.push({ x:Math.round(rect.x), y:Math.round(rect.y), w:Math.round(rect.w), h:Math.round(rect.h), kind:'text', rowH:Math.round(rect.h), editable:true });
+      detectedLines.sort(function(a,b){ return (a.y-b.y)||(a.x-b.x); });
+      setStatus('✋ v11 · Caja manual creada. ↩ deshace.');
+    }
+    rebuildIconBoxes(); selection=null; hoverIndex=null;
+    renderDetectedList(detectedLines); renderOverlays();
+  }
+  function overlayPoint(e){
+    var r=overlay.getBoundingClientRect();
+    return { x:(e.clientX-r.left)*(canvas.width/overlay.width), y:(e.clientY-r.top)*(canvas.height/overlay.height) };
+  }
+  // ★ v11: tooltip en vivo de la pipeta
+  function updatePipTooltip(e){
+    if (!pipMode || !cleanData){ pipTooltip.classList.remove('active'); return; }
+    var p = overlayPoint(e);
+    var s = samplePixel(p.x, p.y);
+    if (!s){ pipTooltip.classList.remove('active'); return; }
+    var swatch = pipTooltip.querySelector('.swatch-mini');
+    var label = pipTooltip.querySelector('.label');
+    swatch.style.background = s.hex;
+    label.textContent = s.hex + (s.isBg ? ' (fondo)' : ' ← clic para fijar');
+    pipTooltip.classList.add('active');
+    var wrapRect = document.getElementById('canvasContainer').getBoundingClientRect();
+    pipTooltip.style.left = (e.clientX - wrapRect.left + 14) + 'px';
+    pipTooltip.style.top = (e.clientY - wrapRect.top + 14) + 'px';
+  }
+
+  overlay.addEventListener('pointerdown', function(e){
+    if (groupMode){
+      dragging=true; dragStart=overlayPoint(e); dragRect={x:dragStart.x,y:dragStart.y,w:0,h:0};
+      try{ overlay.setPointerCapture(e.pointerId); }catch(_){}
+      e.preventDefault();
+    }
+  });
+  overlay.addEventListener('pointermove', function(e){
+    updatePipTooltip(e);
+    if (dragging && groupMode){
+      var p=overlayPoint(e);
+      dragRect={ x:Math.min(dragStart.x,p.x), y:Math.min(dragStart.y,p.y), w:Math.abs(p.x-dragStart.x), h:Math.abs(p.y-dragStart.y) };
+      renderOverlays();
+    }
+  });
+  overlay.addEventListener('pointerup', function(e){
+    if (dragging && groupMode){
+      dragging=false;
+      var r=dragRect; dragRect=null;
+      finalizeGroup(r);
+      renderOverlays();
+      return;
+    }
+    dragging=false;
+    // ★ v11: pipeta usa pointerup (no click) para evitar conflictos con preventDefault
+    if (pipMode){
+      var p = overlayPoint(e);
+      var s = samplePixel(p.x, p.y);
+      if (!s){ setStatus('🖱️ v11 · No se pudo leer ese píxel.'); return; }
+      if (s.isBg){ setStatus('🖱️ v11 · Ese píxel es FONDO ('+s.hex+'). Clickeá sobre el trazo de la letra.'); return; }
+      colorPick = s.hex; pipMode = false; btnPip.classList.remove('on'); setOverlayInteractive();
+      pipTooltip.classList.remove('active');
+      refInfo.textContent = 'Color pipeta: ' + s.hex;
+      if (ed){ mColor.value = s.hex; refreshPreview(); }
+      setStatus('🖱️ v11 · Color tomado: '+s.hex+' (se usará al editar hasta Aplicar).');
+      return;
+    }
+  });
+  overlay.addEventListener('pointercancel', function(){ dragging=false; dragRect=null; pipTooltip.classList.remove('active'); renderOverlays(); });
+  overlay.addEventListener('pointerleave', function(){ pipTooltip.classList.remove('active'); });
+  overlay.addEventListener('click', function(e){
+    // el click ya no maneja pipMode ni groupMode (se hacen en pointerup)
+    if (groupMode || pipMode) return;
+    var p = overlayPoint(e);
+    if (markMode){ placeMark(p.x, p.y); }
+  });
+  btnMark.addEventListener('click',function(){
+    markMode=!markMode; if(markMode){pipMode=false;groupMode=false;btnPip.classList.remove('on');btnGroup.classList.remove('on');btnGroup.textContent='✋ Agrupar manual: OFF';pipTooltip.classList.remove('active');}
+    btnMark.textContent='🎯 Marcar símbolo: '+(markMode?'ON':'OFF');
+    btnMark.classList.toggle('on',markMode); setOverlayInteractive();
+    setStatus(markMode?'🎯 v11 · Modo marcar ON: clic sobre el icono/logo.':'Modo marcar OFF.');
+  });
+  btnGroup.addEventListener('click',function(){
+    groupMode=!groupMode; if(groupMode){pipMode=false;markMode=false;btnPip.classList.remove('on');btnMark.classList.remove('on');btnMark.textContent='🎯 Marcar símbolo: OFF';pipTooltip.classList.remove('active');}
+    btnGroup.textContent='✋ Agrupar manual: '+(groupMode?'ON':'OFF');
+    btnGroup.classList.toggle('on',groupMode); setOverlayInteractive();
+    setStatus(groupMode?'✋ v11 · Modo agrupar ON: arrastrá un rect sobre las cajas a fusionar.':'Modo agrupar OFF.');
+  });
+  btnPip.addEventListener('click',function(){
+    pipMode=!pipMode; if(pipMode){markMode=false;groupMode=false;btnMark.classList.remove('on');btnMark.textContent='🎯 Marcar símbolo: OFF';btnGroup.classList.remove('on');btnGroup.textContent='✋ Agrupar manual: OFF';}
+    btnPip.classList.toggle('on',pipMode); setOverlayInteractive();
+    if (!pipMode) pipTooltip.classList.remove('active');
+    setStatus(pipMode?'🖱️ v11 · Pipeta ON: mové el mouse para VER el color en vivo, y hacé CLIC sobre el trazo de la letra para fijarlo.':'Pipeta OFF.');
+  });
+  btnUndoMark.addEventListener('click',function(){
+    if(!markStack.length){setStatus('Nada que deshacer.');return;}
+    detectedLines=markStack.pop();rebuildIconBoxes();selection=null;hoverIndex=null;
+    renderDetectedList(detectedLines);renderOverlays();setStatus('↩ v11 · Cambio deshecho.');
+  });
+
+  function renderDetectedList(lines){
+    var c=document.getElementById('ocrResults');c.innerHTML='';
+    if(!lines.length){c.innerHTML='<div style="padding:8px;color:#888;font-size:11px;">Sin cajas. Bajá "mínimo" a 6 y volvé a Detectar.</div>';return;}
+    lines.forEach(function(ln,i){
+      var div=document.createElement('div');div.className='detected'+(ln.kind==='icon'?' locked':'');
+      var bd=document.createElement('span');bd.className='num-badge'+(ln.kind==='icon'?' lock':'');bd.textContent=ln.kind==='icon'?'🔒':(i+1);
+      var ts=document.createElement('span');ts.className='detected-text';
+      ts.textContent=(ln.kind==='icon'?'símbolo (intocable) ':'')+ln.w+'×'+ln.h+'px'+(ln.rowH?' · alto '+ln.rowH+'px':'');
+      var tg=document.createElement('button');tg.className='tiny';tg.textContent='⇄';tg.title='alternar texto↔símbolo';
+      tg.onclick=function(e){e.stopPropagation();ln.kind=(ln.kind==='icon')?'text':'icon';ln.editable=(ln.kind==='text');
+        if(ln.kind==='text'&&!ln.rowH)ln.rowH=Math.max(6,ln.h);rebuildIconBoxes();renderDetectedList(detectedLines);renderOverlays();
+        setStatus('⇄ Caja '+(i+1)+' ahora es '+(ln.kind==='icon'?'SÍMBOLO 🔒':'TEXTO editable')+'.');};
+      div.onmouseenter=function(){hoverIndex=i;renderOverlays();};
+      div.onmouseleave=function(){hoverIndex=null;renderOverlays();};
+      if(ln.kind==='icon'){
+        div.onclick=function(){hoverIndex=null;selection=null;renderOverlays();setStatus('🔒 Caja '+(i+1)+' es SÍMBOLO: no se edita.');};
+        div.append(bd,ts,tg);
+      }else{
+        var eb=document.createElement('button');eb.className='detected-edit';eb.textContent='✏️ Editar';
+        div.onclick=function(){ if(refMode){setReference(ln,i);return;}
+          document.querySelectorAll('.detected').forEach(function(d){d.classList.remove('selected');});div.classList.add('selected');hoverIndex=null;
+          selection={x:ln.x,y:ln.y,w:ln.w,h:ln.h,rowH:ln.rowH,kind:'text'};renderOverlays();setStatus('v11 · Caja '+(i+1)+' fijada. Alto: '+(ln.rowH||'?')+'px (+✚'+fixNow()+').');};
+        eb.onclick=function(e){e.stopPropagation(); if(refMode){setReference(ln,i);return;}
+          document.querySelectorAll('.detected').forEach(function(d){d.classList.remove('selected');});div.classList.add('selected');hoverIndex=null;
+          selection={x:ln.x,y:ln.y,w:ln.w,h:ln.h,rowH:ln.rowH,kind:'text'};renderOverlays();openEditModal();};
+        div.append(bd,ts,eb,tg);
+      }
+      c.appendChild(div);
+    });
+  }
+
+  function roundRect(g,x,y,w,h,r){g.beginPath();g.moveTo(x+r,y);g.arcTo(x+w,y,x+w,y+h,r);g.arcTo(x+w,y+h,x,y+h,r);g.arcTo(x,y+h,x,y,r);g.arcTo(x,y,x+w,y,r);g.closePath();}
+  function drawGlyphIcon(g,type,cx,cy,s,color){
+    g.save();g.strokeStyle=color;g.fillStyle=color;g.lineWidth=Math.max(1,s*0.085);g.lineJoin='round';g.lineCap='round';
+    if(type==='CAL'){
+      var w=s*0.92,h=s*0.86,x=cx-w/2,y=cy-h/2;
+      roundRect(g,x,y,w,h,s*0.12);g.stroke();
+      g.beginPath();g.moveTo(x,y+h*0.30);g.lineTo(x+w,y+h*0.30);g.stroke();
+      g.beginPath();g.moveTo(x+w*0.28,y-s*0.12);g.lineTo(x+w*0.28,y+h*0.06);g.stroke();
+      g.beginPath();g.moveTo(x+w*0.72,y-s*0.12);g.lineTo(x+w*0.72,y+h*0.06);g.stroke();
+      var cols=4,rows=2,pw=w*0.62/(cols-1),ph=h*0.30/(rows-1);
+      var ox=x+(w-pw*(cols-1))/2,oy=y+h*0.30+(h*0.70-ph*(rows-1))/2-h*0.02;
+      for(var r=0;r<rows;r++)for(var cc=0;cc<cols;cc++){g.beginPath();g.arc(ox+cc*pw,oy+r*ph,s*0.045,0,7);g.fill();}
+    }else if(type==='CLK'||type==='ALARM'){
+      var rr=s*0.42;g.beginPath();g.arc(cx,cy,rr,0,7);g.stroke();
+      if(type==='ALARM'){
+        g.beginPath();g.arc(cx-rr*0.7,cy-rr*0.85,rr*0.32,Math.PI*0.9,Math.PI*2.0);g.stroke();
+        g.beginPath();g.arc(cx+rr*0.7,cy-rr*0.85,rr*0.32,Math.PI*1.0,Math.PI*2.1);g.stroke();
+        g.beginPath();g.moveTo(cx-rr*0.6,cy+rr*0.85);g.lineTo(cx-rr*0.95,cy+rr*1.25);g.stroke();
+        g.beginPath();g.moveTo(cx+rr*0.6,cy+rr*0.85);g.lineTo(cx+rr*0.95,cy+rr*1.25);g.stroke();
+      }
+      g.beginPath();g.moveTo(cx,cy);g.lineTo(cx-rr*0.45,cy-rr*0.35);g.stroke();
+      g.beginPath();g.moveTo(cx,cy);g.lineTo(cx+rr*0.10,cy-rr*0.72);g.stroke();
+      g.beginPath();g.arc(cx,cy,s*0.05,0,7);g.fill();
+    }else if(type==='CHK'){g.beginPath();g.moveTo(cx-s*0.34,cy+s*0.02);g.lineTo(cx-s*0.08,cy+s*0.30);g.lineTo(cx+s*0.38,cy-s*0.30);g.stroke();
+    }else if(type==='XMK'){g.beginPath();g.moveTo(cx-s*0.3,cy-s*0.3);g.lineTo(cx+s*0.3,cy+s*0.3);g.stroke();g.beginPath();g.moveTo(cx+s*0.3,cy-s*0.3);g.lineTo(cx-s*0.3,cy+s*0.3);g.stroke();
+    }else if(type==='BUL'){g.beginPath();g.arc(cx,cy,s*0.16,0,7);g.fill();}
+    g.restore();
+  }
+  function iconWidth(t,s){return s*0.95;}
+
+  function bgDominant(img,w,h){var d=img.data,band=Math.max(2,Math.round(Math.min(w,h)*0.18)),samples=[];
+    function add(x,y){var i=(y*w+x)*4,br=(d[i]+d[i+1]+d[i+2])/3;if(br<90)return;samples.push([d[i],d[i+1],d[i+2],br]);}
+    for(var x=0;x<w;x++)for(var k=0;k<band;k++){add(x,k);add(x,h-1-k);}for(var y=0;y<h;y++)for(var k2=0;k2<band;k2++){add(k2,y);add(w-1-k2,y);}
+    if(!samples.length)return{solid:[255,255,255],flat:true};
+    var brs=samples.map(function(s){return s[3];}).sort(function(a,b){return a-b;});var medBr=brs[brs.length>>1];
+    var near=samples.filter(function(s){return Math.abs(s[3]-medBr)<=12;});if(!near.length)near=samples;
+    var r=0,g=0,b=0;near.forEach(function(s){r+=s[0];g+=s[1];b+=s[2];});
+    r=Math.round(r/near.length);g=Math.round(g/near.length);b=Math.round(b/near.length);
+    var std=Math.sqrt(samples.reduce(function(a,s){return a+(s[3]-medBr)*(s[3]-medBr);},0)/samples.length);
+    return{solid:[r,g,b],flat:std<22};}
+  function inProtect(x,y,protect){if(!protect)return false;for(var i=0;i<protect.length;i++){var p=protect[i];if(x>=p.x&&x<p.x+p.w&&y>=p.y&&y<p.y+p.h)return true;}return false;}
+  function inpaintInPlace(img,w,h,protect,bg){
+    var d=img.data;bg=bg||bgDominant(img,w,h);
+    function safe(arr,i){var br=(arr[i]+arr[i+1]+arr[i+2])/3;if(br<200)return bg.solid;return[arr[i],arr[i+1],arr[i+2]];}
+    if(bg.flat){var R=bg.solid[0],G2=bg.solid[1],B=bg.solid[2];
+      for(var y=0;y<h;y++)for(var x=0;x<w;x++){if(inProtect(x,y,protect))continue;var i=(y*w+x)*4;d[i]=R;d[i+1]=G2;d[i+2]=B;d[i+3]=255;}return;}
+    for(var y2=0;y2<h;y2++){var L=safe(d,(y2*w)*4),Rt=safe(d,(y2*w+(w-1))*4);
+      for(var x2=0;x2<w;x2++){if(inProtect(x2,y2,protect))continue;var t=x2/Math.max(1,w-1),i2=(y2*w+x2)*4;
+        d[i2]=Math.round(L[0]*(1-t)+Rt[0]*t);d[i2+1]=Math.round(L[1]*(1-t)+Rt[1]*t);d[i2+2]=Math.round(L[2]*(1-t)+Rt[2]*t);d[i2+3]=255;}}
+    var cp=new Uint8ClampedArray(d);
+    for(var x3=0;x3<w;x3++){var U=safe(cp,x3*4),D=safe(cp,((h-1)*w+x3)*4);
+      for(var y3=0;y3<h;y3++){if(inProtect(x3,y3,protect))continue;var t2=y3/Math.max(1,h-1),i3=(y3*w+x3)*4;
+        d[i3]=Math.round((d[i3]+U[0]*(1-t2)+D[0]*t2)/2);d[i3+1]=Math.round((d[i3+1]+U[1]*(1-t2)+D[1]*t2)/2);d[i3+2]=Math.round((d[i3+2]+U[2]*(1-t2)+D[2]*t2)/2);}}}
+  function buildProtect(areaX,areaY){
+    var out=[];
+    detectedLines.forEach(function(l){
+      if(l.kind!=='text')return;
+      if(selection&&l.x===selection.x&&l.y===selection.y&&l.w===selection.w&&l.h===selection.h)return;
+      out.push({x:l.x-areaX-1,y:l.y-areaY-1,w:l.w+2,h:l.h+2});
+    });
+    return out;
+  }
+  function clampArea(sel,pad){
+    var ax=sel.x-pad,ay=sel.y-pad,ax2=sel.x+sel.w+pad,ay2=sel.y+sel.h+pad;
+    detectedLines.forEach(function(l){
+      if(l.kind!=='text')return;
+      if(l.x===sel.x&&l.y===sel.y&&l.w===sel.w&&l.h===sel.h)return;
+      var lb=l.x+l.w,lb2=l.y+l.h;
+      var hoverlap=!(lb<ax||l.x>ax2);var voverlap=!(lb2<ay||l.y>ay2);
+      if(hoverlap&&lb2<=sel.y+2)ay=Math.max(ay,lb2+2);
+      if(hoverlap&&l.y>=sel.y+sel.h-2)ay2=Math.min(ay2,l.y-2);
+      if(voverlap&&lb<=sel.x+2)ax=Math.max(ax,lb+2);
+      if(voverlap&&l.x>=sel.x+sel.w-2)ax2=Math.min(ax2,l.x-2);
+    });
+    ax=Math.max(0,ax);ay=Math.max(0,ay);ax2=Math.min(canvas.width,ax2);ay2=Math.min(canvas.height,ay2);
+    if(ax2-ax<4){ax=sel.x;ax2=sel.x+sel.w;}
+    if(ay2-ay<4){ay=sel.y;ay2=sel.y+sel.h;}
+    return{x:Math.round(ax),y:Math.round(ay),w:Math.round(ax2-ax),h:Math.round(ay2-ay)};
+  }
+  function restoreIcons(work,w,h,areaX,areaY){
+    if(!cleanData)return;var d=work.data,cw=cleanData.width;
+    for(var bi=0;bi<iconBoxes.length;bi++){var b=iconBoxes[bi];
+      var x0=Math.max(0,b.x-areaX),y0=Math.max(0,b.y-areaY);
+      var x1=Math.min(w-1,b.x+b.w-1-areaX),y1=Math.min(h-1,b.y+b.h-1-areaY);
+      if(x1<x0||y1<y0)continue;
+      for(var y=y0;y<=y1;y++)for(var x=x0;x<=x1;x++){var gi=((b.y+(y-y0))*cw+(b.x+(x-x0)))*4;var li=(y*w+x)*4;d[li]=cleanData.data[gi];d[li+1]=cleanData.data[gi+1];d[li+2]=cleanData.data[gi+2];d[li+3]=255;}}
+  }
+
+  var TOKEN_RE=/\[(CAL|CLK|ALARM|CHK|XMK|BUL)\]/g;
+  function fitFontSize(g,texto,targetH,family,boldF,italicF){var plain=texto.replace(TOKEN_RE,'').trim();
+    if(!plain||targetH<=0)return Math.max(8,Math.round(targetH));var size=Math.max(6,Math.min(300,targetH));
+    for(var k=0;k<12;k++){g.font=(italicF?'italic ':'')+(boldF?'bold ':'')+size+'px '+family;
+      var m=g.measureText(plain);var asc=m.actualBoundingBoxAscent,desc=m.actualBoundingBoxDescent;
+      var hh=(asc!=null&&desc!=null&&asc+desc>0)?(asc+desc):size*0.72;var ratio=targetH/hh;
+      if(Math.abs(ratio-1)<0.004)break;size=Math.max(4,Math.min(320,size*ratio));}return Math.round(size);}
+  function tokenize(texto){var out=[],last=0,m;TOKEN_RE.lastIndex=0;
+    while((m=TOKEN_RE.exec(texto))){if(m.index>last)out.push({t:'txt',v:texto.slice(last,m.index)});out.push({t:'ico',v:m[1]});last=m.index+m[0].length;}
+    if(last<texto.length)out.push({t:'txt',v:texto.slice(last)});return out;}
+  function measureRun(g,tokens,size,family,boldF,italicF){g.font=(italicF?'italic ':'')+(boldF?'bold ':'')+size+'px '+family;var sp=size*0.18,total=0;
+    for(var i=0;i<tokens.length;i++){var tk=tokens[i];if(tk.t==='txt')total+=g.measureText(tk.v).width;else total+=iconWidth(tk.v,size)+sp;}return total;}
+  function drawTextWithIcons(g,texto,x,y,w,h,size,color,family,boldF,italicF,align){if(!texto)return;var tokens=tokenize(texto);g.save();
+    g.font=(italicF?'italic ':'')+(boldF?'bold ':'')+size+'px '+family;g.fillStyle=color;g.textBaseline='middle';g.textAlign='left';
+    var cy=y+h/2,sp=size*0.18,total=measureRun(g,tokens,size,family,boldF,italicF);
+    var cx=align==='left'?x:(align==='right'?x+w-total:x+(w-total)/2);
+    for(var i=0;i<tokens.length;i++){var tk=tokens[i];if(tk.t==='txt'){g.fillText(tk.v,cx,cy);cx+=g.measureText(tk.v).width;}
+      else{var iw=iconWidth(tk.v,size);drawGlyphIcon(g,tk.v,cx+iw/2,cy,size*0.82,color);cx+=iw+sp;}}g.restore();}
+
+  function buildSwatches(){
+    mSwatches.innerHTML='';
+    (dominantInks||[]).forEach(function(hex){
+      var b=document.createElement('button');b.className='swatch';b.style.background=hex;b.title='Usar '+hex;
+      b.onclick=function(){
+        mColor.value=hex; colorPick=hex; refreshPreview();
+        // marcar visualmente la muestra activa
+        mSwatches.querySelectorAll('.swatch').forEach(function(s){ s.classList.remove('active'); });
+        b.classList.add('active');
+        setStatus('🎨 v11 · Muestra aplicada: '+hex);
+      };
+      mSwatches.appendChild(b);
+    });
+    if(!dominantInks.length){ var s=document.createElement('span'); s.textContent='(cargá una imagen)'; s.style.fontSize='10px'; mSwatches.appendChild(s); }
+  }
+  function getFmt(){return{family:mFontFamily.value,color:mColor.value,size:+mFontSize.value,bold:mBold.classList.contains('on'),italic:mItalic.classList.contains('on'),align:mAlignVal};}
+  function openEditModal(){
+    if(!selection||selection.kind==='icon'){setStatus('🔒 Eso es un símbolo: no se edita (usa ⇄).');return;}
+    if(!cleanData){setStatus('❌ No hay imagen limpia (recarga el archivo)');return;}
+    var pad=+document.getElementById('paddingSize').value;
+    var area=clampArea(selection,pad);
+    var snapshot=crop(cleanData,area.x,area.y,area.w,area.h);
+    var base=refBox?refBox.h:(selection.rowH||measureCapHeight(snapshot));
+    ed={sel:Object.assign({},selection),area:area,snapshot:snapshot,baseH:base,targetH:base+fixNow(),autoSize:true,protect:buildProtect(area.x,area.y)};
+    var hex=colorPick||sampleOriginalColor();
+    if(hex)mColor.value=hex;
+    var pale=hex&&lumOfHex(hex)>205;
+    mInput.value='';mBold.classList.remove('on');mItalic.classList.remove('on');mAlignVal='left';
+    alignBtns.forEach(function(b,idx){b.classList.toggle('on',idx===0);});
+    buildSwatches();
+    mPreview.width=area.w;mPreview.height=area.h;editModal.classList.add('open');
+    refreshPreview();setTimeout(function(){mInput.focus();},60);
+    setStatus('✏️ v11 · alto '+ed.targetH+'px · color '+mColor.value+(colorPick?' (fijado)':' (original con fondo global)')+(pale?' — color débil: elegí una muestra o usá la pipeta.':''));
+  }
+  function refreshPreview(){if(!ed)return;var fmt=getFmt();
+    var th=ed.baseH+fixNow();ed.targetH=th;
+    var work=cloneImageData(ed.snapshot);inpaintInPlace(work,ed.area.w,ed.area.h,ed.protect);restoreIcons(work,ed.area.w,ed.area.h,ed.area.x,ed.area.y);mCtx.putImageData(work,0,0);
+    var texto=mInput.value,size=fmt.size;
+    if(ed.autoSize){size=fitFontSize(mCtx,texto||'0',th,fmt.family,fmt.bold,fmt.italic);mFontSize.value=size;}
+    mFontSizeLabel.textContent=size;fineLabel.textContent=ed.autoSize?('auto · '+th+'px'):('manual '+size+'px');
+    var rel={x:ed.sel.x-ed.area.x,y:ed.sel.y-ed.area.y,w:ed.sel.w,h:ed.sel.h};
+    if(texto)drawTextWithIcons(mCtx,texto,rel.x,rel.y,rel.w,rel.h,size,fmt.color,fmt.family,fmt.bold,fmt.italic,fmt.align);
+  }
+  function applyToMain(){setStatus('⏳ Aplicando (v11)…');if(!ed){setStatus('❌ No hay edición activa');return;}
+    try{var fmt=getFmt(),texto=mInput.value;
+      var th=ed.baseH+fixNow();ed.targetH=th;
+      var size=ed.autoSize?fitFontSize(ctx,texto||'0',th,fmt.family,fmt.bold,fmt.italic):fmt.size;
+      var work=cloneImageData(ed.snapshot);inpaintInPlace(work,ed.area.w,ed.area.h,ed.protect);restoreIcons(work,ed.area.w,ed.area.h,ed.area.x,ed.area.y);ctx.putImageData(work,ed.area.x,ed.area.y);
+      var rel={x:ed.sel.x-ed.area.x,y:ed.sel.y-ed.area.y,w:ed.sel.w,h:ed.sel.h};
+      if(texto)drawTextWithIcons(ctx,texto,ed.area.x+rel.x,ed.area.y+rel.y,rel.w,rel.h,size,fmt.color,fmt.family,fmt.bold,fmt.italic,fmt.align);
+      originalImageData=ctx.getImageData(0,0,canvas.width,canvas.height);
+      selection=null;hoverIndex=null;ed=null;refBox=null;colorPick=null;
+      refInfo.textContent='Referencia: (auto = alto de renglón y color propio)';
+      editModal.classList.remove('open');renderOverlays();
+      setStatus('✅ v11 · '+(texto?('Texto reemplazado ('+size+'px, color '+fmt.color+') — 🔒 y vecinas intactas'):'Texto borrado — vecinas intactas'));
+    }catch(err){setStatus('❌ Error al aplicar: '+err.message);console.error(err);}}
+  function closeModal(){ed=null;editModal.classList.remove('open');setStatus('❌ Cancelado (imagen intacta)');}
+
+  [mInput,mFontFamily,mColor].forEach(function(el){el.addEventListener('input',function(){
+    // si el usuario toca el color picker manualmente, desmarcar muestras activas
+    mSwatches.querySelectorAll('.swatch').forEach(function(s){ s.classList.remove('active'); });
+    refreshPreview();
+  });});
+  mFontSize.addEventListener('input',function(){if(ed)ed.autoSize=false;refreshPreview();});
+  document.getElementById('sizeFix').addEventListener('input',function(e){document.getElementById('sizeFixLabel').textContent=e.target.value;refreshPreview();});
+  function nudge(d){if(!ed)return;ed.autoSize=false;mFontSize.value=clamp((+mFontSize.value)+d,6,200);refreshPreview();}
+  document.addEventListener('click',function(e){var btn=e.target.closest('[data-action]');if(!btn)return;var a=btn.dataset.action;
+    if(a==='apply'){applyToMain();}else if(a==='cancel'){closeModal();}
+    else if(a==='bold'){mBold.classList.toggle('on');refreshPreview();}else if(a==='italic'){mItalic.classList.toggle('on');refreshPreview();}
+    else if(a==='align'){mAlignVal=btn.dataset.val;alignBtns.forEach(function(b){b.classList.toggle('on',b===btn);});refreshPreview();}
+    else if(a==='minus'){nudge(-1);}else if(a==='plus'){nudge(+1);}else if(a==='resetAuto'){if(ed){ed.autoSize=true;refreshPreview();}}
+    else if(a==='recolor'){if(ed){colorPick=null;var hex=sampleOriginalColor();if(hex){mColor.value=hex;refreshPreview();mSwatches.querySelectorAll('.swatch').forEach(function(s){ s.classList.remove('active'); });setStatus('🎨 v11 · Color re-muestreado de esta caja: '+hex);}else setStatus('🎨 v11 · Esta caja no tiene tinta sólida; usá una muestra o la pipeta.');}}});
+  mInput.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();applyToMain();}if(e.key==='Escape')closeModal();});
+  editModal.addEventListener('click',function(e){if(e.target===editModal)closeModal();});
+  btnEditSelection.onclick=function(){openEditModal();};
+
+  btnRefMode.onclick=function(){if(!ed){setStatus('❌ Abre primero el editor de la caja que quieres editar');return;}
+    refMode=!refMode;
+    btnRefMode.classList.toggle('on',refMode);
+    document.querySelectorAll('.detected').forEach(function(d){d.classList.toggle('refmode',refMode);});
+    setStatus(refMode?'👉 v11 · Clickea una caja de TEXTO para clavar SOLO su alto.':'Modo referencia desactivado.');};
+  function setReference(ln,i){if(ln.kind==='icon'){setStatus('🔒 No uses un símbolo como referencia.');return;}
+    var snap=crop(cleanData,ln.x,ln.y,ln.w,ln.h);var h=ln.rowH||measureCapHeight(snap);
+    refBox={h:h};refMode=false;btnRefMode.classList.remove('on');document.querySelectorAll('.detected').forEach(function(d){d.classList.remove('refmode');});
+    refInfo.textContent='Referencia de ALTO: caja '+(i+1)+' → '+h+'px (solo tamaño)';
+    if(ed){ed.baseH=h;refreshPreview();}
+    setStatus('📏 v11 · Referencia de ALTO fijada: '+h+'px. El color no cambia.');}
+
+  var ICON_BTNS=[{mk:'[CAL]',type:'CAL',name:'calendario'},{mk:'[CLK]',type:'CLK',name:'reloj'},{mk:'[ALARM]',type:'ALARM',name:'despertador'}];
+  var CHAR_BTNS=[{ch:'✓',name:'check'},{ch:'✗',name:'equis'},{ch:'•',name:'viñeta'},{ch:'S/',name:'soles'},{ch:'$',name:'dólar'},{ch:'€',name:'euro'},{ch:':',name:'dos ptos'},{ch:'|',name:'barra'},{ch:'/',name:'slash'},{ch:'-',name:'guion'}];
+  (function buildPalette(){
+    ICON_BTNS.forEach(function(b){var btn=document.createElement('button');btn.title=b.name+' — inserta '+b.mk;
+      var cv=document.createElement('canvas');cv.width=20;cv.height=20;var cg=cv.getContext('2d');drawGlyphIcon(cg,b.type,10,10,16,'#ffffff');btn.appendChild(cv);
+      btn.onclick=function(){insertAtCursor(mInput,b.mk);};mPalette.appendChild(btn);});
+    CHAR_BTNS.forEach(function(b){var btn=document.createElement('button');btn.textContent=b.ch;btn.title=b.name;btn.onclick=function(){insertAtCursor(mInput,b.ch);};mPalette.appendChild(btn);});
+  })();
+  function insertAtCursor(inp,text){var s=(inp.selectionStart==null?inp.value.length:inp.selectionStart),e=(inp.selectionEnd==null?s:inp.selectionEnd);inp.value=inp.value.slice(0,s)+text+inp.value.slice(e);inp.focus();inp.selectionStart=inp.selectionEnd=s+text.length;refreshPreview();}
+
+  var lm={minSize:'minSizeLabel',maxSize:'maxSizeLabel',gapSize:'gapLabel',paddingSize:'paddingLabel',jump:'jumpLabel',sizeFix:'sizeFixLabel'};
+  Object.keys(lm).forEach(function(id){document.getElementById(id).addEventListener('input',function(e){document.getElementById(lm[id]).textContent=e.target.value;});});
+  document.getElementById('btnSave').addEventListener('click',function(){canvas.toBlob(function(b){if(!b)return;
+    var u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download='imagen_editada.jpg';document.body.appendChild(a);a.click();
+    setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(u);},100);setStatus('✅ v11 · Guardado');},'image/jpeg',0.95);});
+  document.getElementById('btnReset').addEventListener('click',function(){
+    document.getElementById('fileInput').value='';ctx.clearRect(0,0,canvas.width,canvas.height);
+    debugCtx.clearRect(0,0,debugCanvas.width,debugCanvas.height);clearOverlay();
+    cleanData=null;originalImageData=null;dominantInks=[];globalBgLum=240;selection=null;detectedLines=[];hoverIndex=null;ed=null;refBox=null;refMode=false;colorPick=null;pipMode=false;markMode=false;groupMode=false;iconBoxes=[];markStack=[];dragRect=null;dragging=false;
+    btnMark.textContent='🎯 Marcar símbolo: OFF';btnMark.classList.remove('on');
+    btnGroup.textContent='✋ Agrupar manual: OFF';btnGroup.classList.remove('on');
+    btnPip.classList.remove('on');btnRefMode.classList.remove('on');pipTooltip.classList.remove('active');setOverlayInteractive();
+    document.getElementById('ocrResults').innerHTML='';bboxInfo.textContent='Sin selección';btnEditSelection.disabled=true;
+    refInfo.textContent='Referencia: (auto = alto de renglón y color propio)';editModal.classList.remove('open');setStatus('Reiniciado (v11). Carga el archivo de imagen de nuevo.');});
+
+  window.__editorReady = true;
+  resizeOverlay();
+  setStatus('✅ Editor v11 listo. Cargá la imagen y apretá Detectar.');
+} catch (fatal) {
+  var s = document.getElementById('status');
+  if (s) { s.className = 'status err'; s.textContent = '💥 El editor falló al iniciar (v11): ' + fatal.message; }
+  console.error(fatal);
 }
+</script>
+<script>
+/* ================= LOG A GOOGLE SHEETS v15 — SILENCIOSO, IDENTIFICA POR IP =================
+   Sin prompts, sin toasts, sin sección en el panel, sin botones de prueba.
+   Registra TODO lo que se hace y lo envía en segundo plano a tu Apps Script (/exec).
+   La columna "usuario" de la hoja lleva la IP pública del equipo.
+=========================================================================================== */
+(function(){
+  var LOG_URL = 'https://script.google.com/macros/s/AKfycbzzgjoA--ZJoC57QI0rpNnXuvPMRgR-AWPjfjePdgd28_8oj0QVdQdX_CWrRcetcBse/exec';   // ← misma URL que ya tenías configurada
 
-document.getElementById('btnReset').addEventListener('click', () => {
-  document.getElementById('fileInput').value = '';
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  clearOverlay();
-  originalImageData = null;
-  selection = null;
-  detectedLines = [];
-  document.getElementById('ocrResults').innerHTML = '';
-  bboxInfo.textContent = 'Sin selección';
-  status.textContent = 'Reiniciado. Carga una nueva imagen.';
-});
+  var SESSION_ID = Math.random().toString(36).slice(2,10);
+  var IP = '';
+  var QUEUE = [], FLUSH_T = null, CURRENT_FILE = '';
+
+  /* ---------- IP pública (silencioso; si falla, las filas salen con 'sin-ip') ---------- */
+  function resolveIP(){
+    try{
+      fetch('https://api.ipify.org?format=json').then(function(r){ return r.json(); }).then(function(j){
+        IP = (j && j.ip) ? j.ip : '';
+        if(IP) log('client_ip', IP);
+      }).catch(function(){
+        try{
+          fetch('https://ipinfo.io/json').then(function(r){ return r.json(); }).then(function(j){
+            IP = (j && j.ip) ? j.ip : '';
+            if(IP) log('client_ip', IP + ' (vía ipinfo)');
+          }).catch(function(){ IP = ''; });
+        }catch(_){ IP = ''; }
+      });
+    }catch(_){ IP = ''; }
+  }
+
+  /* ---------- cola + envío con fallbacks (POST → GET-imagen → beacon) ---------- */
+  function log(action, detail){
+    if(!LOG_URL || LOG_URL.indexOf('http') !== 0) return;
+    QUEUE.push({ ts:new Date().toISOString(), local:new Date().toLocaleString(), user:'sin-ip', session:SESSION_ID,
+                 action:action, detail:(detail==null?'':String(detail)), file:CURRENT_FILE, ua:navigator.userAgent });
+    if(QUEUE.length > 500) QUEUE.splice(0, QUEUE.length - 500);
+    if(QUEUE.length >= 10) flush(); else schedule();
+  }
+  function schedule(){ if(FLUSH_T) return; FLUSH_T = setTimeout(flush, 2500); }
+  function stamp(batch){ for(var i=0;i<batch.length;i++){ batch[i].user = IP || 'sin-ip'; } return batch; }
+  function beacon(body){ try{ navigator.sendBeacon(LOG_URL, new Blob([body], {type:'text/plain'})); }catch(_){} }
+  function sendGET(batch){
+    var url = LOG_URL + (LOG_URL.indexOf('?') < 0 ? '?' : '&') + 'rows=' + encodeURIComponent(JSON.stringify(batch));
+    var img = new Image(); img.src = url;   // fire & forget: doGet escribe con ?rows=
+  }
+  function flush(){
+    FLUSH_T = null; if(!QUEUE.length) return;
+    var batch = stamp(QUEUE.splice(0, QUEUE.length));
+    var body = JSON.stringify({ rows: batch });
+    try{
+      fetch(LOG_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=UTF-8'}, body: body, redirect:'follow' })
+        .catch(function(){ sendGET(batch); });
+    }catch(_){ sendGET(batch); }
+  }
+  window.addEventListener('beforeunload', function(){
+    log('session_end', '');
+    if(QUEUE.length){ var b = stamp(QUEUE.splice(0, QUEUE.length)); beacon(JSON.stringify({rows:b})); sendGET(b); }
+  });
+
+  /* ---------- hooks a funciones globales del editor (eventos ricos) ---------- */
+  function wrap(name, after){
+    var orig = window[name]; if(typeof orig !== 'function') return;
+    window[name] = function(){ var a = arguments, r; try{ r = orig.apply(this, a); } finally { try{ after.apply(this, a); }catch(_){} } return r; };
+  }
+  function whenReady(fn){
+    if(window.__editorReady) return fn();
+    var t = setInterval(function(){ if(window.__editorReady){ clearInterval(t); fn(); } }, 200);
+    setTimeout(function(){ clearInterval(t); }, 8000);
+  }
+
+  /* ---------- captura genérica de TODO el panel (clics + cambios), con debounce ---------- */
+  var SKIP_IDS = { btnDetect:1, btnRedetect:1, btnSave:1, btnReset:1, btnEditSelection:1 };
+  var SKIP_ACTIONS = { apply:1, cancel:1 };
+  document.addEventListener('click', function(e){
+    var el = e.target && e.target.closest ? e.target.closest('button, .detected, .swatch') : null;
+    if(!el) return;
+    if(el.id && SKIP_IDS[el.id]) return;
+    var da = el.getAttribute ? el.getAttribute('data-action') : null;
+    if(da && SKIP_ACTIONS[da]) return;
+    var txt = ((el.textContent || '').trim() || (el.title || '') || el.id || da || el.className || el.tagName).slice(0, 50);
+    var on = (el.classList && el.classList.contains('on')) ? ' [ON]' : '';
+    log('ui_click', txt + on);
+  });
+  var deb = {};
+  function logControl(el){
+    var id = el.id || el.name || el.tagName;
+    var val = String(el.value == null ? '' : el.value).slice(0, 60);
+    clearTimeout(deb[id]);
+    deb[id] = setTimeout(function(){ log('ui_change', id + ' = ' + val); }, 600);
+  }
+  document.addEventListener('input', function(e){ var t = e.target; if(t && (t.tagName === 'INPUT' || t.tagName === 'SELECT')) logControl(t); });
+  document.addEventListener('change', function(e){ var t = e.target; if(t && t.tagName === 'SELECT') logControl(t); });
+
+  whenReady(function(){
+    resolveIP();
+    log('session_start', 'pantalla ' + screen.width + 'x' + screen.height + ' · ' + location.href);
+
+    wrap('runDetect', function(){ log('detect', (window.detectedLines ? detectedLines.length : '?') + ' cajas · ' + (window.tinyMerged || 0) + ' fusionadas'); });
+    wrap('placeMark', function(x, y){ log('mark_symbol', 'icono en ' + Math.round(x) + ',' + Math.round(y)); });
+    wrap('finalizeGroup', function(rect){ log('group_manual', rect ? (Math.round(rect.w) + 'x' + Math.round(rect.h)) : ''); });
+    wrap('openEditModal', function(){ if(window.ed) log('edit_open', 'caja ' + Math.round(ed.sel.w) + 'x' + Math.round(ed.sel.h) + ' · alto ' + ed.targetH + 'px · color ' + document.getElementById('mColor').value); });
+    wrap('applyToMain', function(){ log('edit_apply', 'texto="' + document.getElementById('mInput').value + '" · size=' + document.getElementById('mFontSize').value + ' · color=' + document.getElementById('mColor').value); });
+    wrap('closeModal', function(){ log('edit_cancel', ''); });
+    wrap('insertAtCursor', function(inp, text){ log('palette_insert', String(text).slice(0,20)); });
+
+    document.getElementById('fileInput').addEventListener('change', function(e){ var f = e.target.files && e.target.files[0]; CURRENT_FILE = f ? f.name : ''; log('image_selected', CURRENT_FILE); });
+    document.getElementById('btnSave').addEventListener('click', function(){ log('save', 'descargó imagen_editada.jpg'); });
+    document.getElementById('btnReset').addEventListener('click', function(){ log('reset', ''); });
+
+    // pipeta: qué color se fijó (el handler del editor ya corrió antes que este listener)
+    document.getElementById('overlay').addEventListener('pointerup', function(){
+      if(window.pipMode === false && window.colorPick) log('pip_pick', window.colorPick);
+    });
+  });
+})();
 </script>
 </body>
 </html>
